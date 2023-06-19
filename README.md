@@ -1,8 +1,8 @@
-# friendly-canonical-text
-An simple but powerful algorithm for canonicalizing text in a way that mostly matches human intuition about semantic equivalence.
+# canonical-quoted-text
+An simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
 
 ### Purpose
-In our modern world, text moves across many system boundaries. We see a post on social media on our phones, copy it, and paste it in a text to a friend. She emails it to a journalist acquaintance, who speaks a different language and uses a different operating system. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, a comma disappears, or capitalization or spelling is altered, or the codepage changes, or smart quotes turn into dumb quotes, or two hyphens become an em dash.
+Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it in a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, a comma disappears, or capitalization or spelling is altered, or the codepage changes, or smart quotes turn into dumb quotes, or two hyphens become an em dash.
 
 In this scenario, how can we evaluate whether the final text is *the same* as the original?
 

@@ -12,7 +12,7 @@ The algorithm documented here is for such cases. It says that two chunks of text
 
 ### Official name and version
 
-The full name of this algorithm is "friendly canonical text 1.15", but it is typically abbreviated "fct1.15".
+The full name of this algorithm is "canonical quoted text 1.15", but it is typically abbreviated "cqt1.15".
 
 The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("15") references a version of the Unicode standard that documents certain details. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
 

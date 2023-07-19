@@ -45,7 +45,7 @@ Start with input content that has been transformed into plain text.
     3. Replace all sequences of two or more whitespace characters with a single space.
    
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
-   1. Replace all hyphen and dash characters in the Unicode character inventory with the more conventional hyphen `-` (`U+002D`).
+   1. Replace all characters in the Unicode dash punctuation category (Pd); see [this list](https://unicodeplus.com/category/Pd) with the more conventional ASCII hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
    3. Replace an ellipsis (&#x2026; `U+2026`) with three instances of the period/full stop `.` (`U+002E`).
    4. Truncate any run of more than 3 full stops.
@@ -58,9 +58,7 @@ Start with input content that has been transformed into plain text.
        Unicode character | codepoint | ASCII equivalent
        --- | --- | ---
        &#x1f60A; | `U+1F60A` | :-)
-       &#xF04A; | `U+F04A` | :-)
        &#x1f610; | `U+1F610` | :-&vert;
-       &#xF04B; | `U+F04B` | :-(
        &#x2639; | `U+2639` | :-(
        &#x1f603; | `U+1F603` | :-D
        &#x1f61D; | `U+1F61D` | :-p
@@ -70,8 +68,9 @@ Start with input content that has been transformed into plain text.
        &#x1f494; | `U+1F494` | </3
        &copy; | `U+00A9` | (c)
        &reg; | `U+00AE` | (R)
+       &bull; | `U+2022` | *
    
-   8. Canonicalize some emojis:
+   8. Replace some ASCII emojis with their canonical equivalent:
    
        Non-canonical | Canonical equivalent
        --- | ---
@@ -86,4 +85,15 @@ Start with input content that has been transformed into plain text.
 5. Transform the text to UTF-8 to produce a canonical byte stream.
 
 ### Caveats
-For example, a paragraph of text that explains half-width and full-width CJK forms in Unicode might be distorted by the algorithm, if it contained samples of both since the algorithm collapses that distinction. Similarly, since the algorithm collapses all runs of hyphens to a single hyphen, text that contains source code having a unary -- operator becomes indistinguishable from text that contains a unary - operator (e.g., `--i` and `-i` produce the same output). 
+This algorithm collapses some differences that are usually insignificant in written text. Note the word "usually". The algorithm may not distinguish certain input texts having subtle distinctions. For example:
+
+* Because the algorithm collapses the distinction between half-width and full-width forms, two Chinese sentences &mdash; one written with half-width forms, and the other written with full-width forms &mdash; will produce the same output.
+* Because of the conversion of certain mathematical operators to ASCII, and because the algorithm normalizes punctuation, two sentences that contain mathematical or computer science expressions might produce the same output when they are actually slightly different (e.g., the expression `i--` and the expression `i-` produce identical output; so do <code>x&#xb2;</code>, <code>x&#x2082;</code>, and <code>x2</code>).
+* Because the algorithm normalizes punctuation, text that is picky about punctuation may lose precision. For example, the instruction from an English teacher, `Always place a comma inside double quotes: "abc,"` is normalized to the same value as `Always place a comma inside double quotes: 'abc',` (which contains no double quotes, despite what the text says).  
+
+This algorithm also leaves intact some differences that some audiences may wish to collapse. Notably, it does not normalize case. Also: 
+
+* A poetry sample written on separate lines produces different output from a poetry written with lines separated by slashes ("Once upon a midnight dreary / While I pondered, weak and weary").
+* Emojis that differ only in skin tone are considered different.
+* ASCII emphasis (e.g., `I'm *really* serious`) is untouched and does not equate to italics or bolded text.
+* Most dingbats (e.g., fancy versions of question marks and check marks) are not normalized.

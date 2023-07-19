@@ -16,7 +16,7 @@ The full name of this algorithm is "canonical quoted text 1.15", but it is typic
 
 The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("15") references a version of the Unicode standard that documents certain details. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
 
-The output of this algorithm can be piped to a hashing function to produce a canonical hash. The recommended notation for such an operation uses a lowercase hash name and parentheses around this algorithm: `Blake3(fct1.15)`. The output of this algorithm can also be piped to a digital signature function to produce a canonical digital signature. The notation pattern is similar: `EdDSA(fct1.15)`. A signature can also take as input a hash of the output of this function: `EdDSA(Blake3(fct1.15))`. All strings in these notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
+The output of this algorithm can be piped to a hashing function to produce a canonical hash. The recommended notation for such an operation uses a lowercase hash name and parentheses around this algorithm: `Blake3(cqt1.15)`. The output of this algorithm can also be piped to a digital signature function to produce a canonical digital signature. The notation pattern is similar: `EdDSA(cqt1.15)`. A signature can also take as input a hash of the output of this function: `EdDSA(Blake3(cqt1.15))`. All strings in these notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
 
 ### Goals
 
@@ -35,27 +35,53 @@ Start with input content that has been transformed into plain text.
 
 >This is a precondition rather than a step in our algorithm. "Plain text" means that the text is ready to be interpreted as IANA media type `text/plain`: it contains no markup intended as instructions to a different formatting engine (e.g., escape sequences, HTML/XML tags, character entities...). Many programs that edit rich text already implement such transformations &mdash; when a user copies text, they place both a richly formatted and a "plain text" version of the content on the clipboard. However, intent matters; including an HTML tag in plain text is correct, if the plain text is *intended* to be an instruction about how to construct an HTML tag &mdash; and it is not correct otherwise. In other words, any required transformation depends on the initial media type.
 
-1. Convert the text to Unicode, eliminating codepages as a source of difference. Representing the data in whichever encoding of Unicode (UTF-8, UTF-16, UTF-32...) is convenient; subsequent steps are described as Unicode operations rather than byte operations.
+1. Convert the text to Unicode, eliminating codepages as a source of difference. Represent the data in whichever encoding of Unicode (UTF-8, UTF-16, UTF-32...) is convenient; subsequent steps are described as Unicode operations rather than byte operations.
 
 2. Normalize the text to [Unicode's NFKC form](https://www.unicode.org/reports/tr15/). This converts CJK from half-width to full-width forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
 
-3. Normalize whitespace. This eliminates differences that are invisible, or that are attributable to the preference of a typist. 
-   1. Trim all leading and trailing whitespace, where "whitespace" means any item in the Unicode character DB that is defined to have `White_Space=yes`.
-   2. Replace all instances of the `U+2028 Line Separator` character or the `U+2029 Paragraph Separator` character with a line feed (`U+000D`, written in many programming languages as `\n`). 
-   3. Replace all carriage returns (`U+000A`, written in many programming languages as `\r`) with a line feed.
-   4. Trim leading and trailing whitespace on each line.
-   5. Replace all sequences of multiple ASCII line feed characters with a single ASCII line feed.
-   6. Replace all instances of `U+200B Zero Width Space` or `U+FEFF Zero Width Non-Breaking Space` or `U+00A0 Non-Breaking Space` or `U+3000 ideographic space` with a simple space (`U+0020`). 
-   7. Replace all sequences of two or more spaces with a single space.
+3. Normalize whitespace. This eliminates differences that are invisible, that are attributable to the preference of a typist, or that constitute variable layout choices.
+    1. Replace each instance of one of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
+    2. Trim all leading and trailing whitespace, where "whitespace" means any item in the Unicode character DB that is defined to have `White_Space=yes`.
+    3. Replace all sequences of two or more whitespace characters with a single space.
    
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
    1. Replace all hyphen and dash characters in the Unicode character inventory with the more conventional hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
-   3. Replace an ellipsis (`U+2026`) with three instances of the period/full stop `.` (`U+002E`).
+   3. Replace an ellipsis (&#x2026; `U+2026`) with three instances of the period/full stop `.` (`U+002E`).
    4. Truncate any run of more than 3 full stops.
-   5. Replace the fraction slash (`U+2044`) with the ordinary slash `/` (`U+002F`).
-   5. Replace the ASCII double-quote character `"` (`U+0022`) as well as left- and right single quotes (aka "smart apostrophe", `U+2018` and `U+2019`) and left- and right double quotes (aka "smart quotes", `U+201C` and `U+201D`) plus guillemets (&#x00AB; and &#x00BB; -- double angle quotes familiar from French and other languages, `U+00AB` and `U+00BB`) and their single-angle equivalents (&#x2039; and &#x203A;, `U+2039` and `U+203A`); with the ASCII apostrophe `'` (byte `0x27`)
+   5. Replace all instances of the ampersand (&amp; `U+0038`) with ` and ` (the word "and" with a space before and after). 
+   5. Replace the fraction slash (&#x2044; `U+2044`) with the ordinary slash `/` (`U+002F`).
+   5. Replace the ASCII double-quote character `"` (`U+0022`) as well as left- and right single quotes (aka "smart apostrophe", &#x2018; `U+2018` and &#x2019; `U+2019`) and left- and right double quotes (aka "smart quotes", &#x201c; `U+201C` and &#x201d; `U+201D`) plus guillemets (&#x00AB; and &#x00BB; -- double angle quotes familiar from French and other languages, `U+00AB` and `U+00BB`) and their single-angle equivalents (&#x2039; and &#x203A;, `U+2039` and `U+203A`); with the ASCII apostrophe `'` (`U+0027`)
    6. Remove all spaces that immediately precede or immediately follow a punctuation character.
+   7. Undo some common autocorrect transformations in word processors by converting fancier Unicode characters to their ASCII equivalents.
+   
+       Unicode character | codepoint | ASCII equivalent
+       --- | --- | ---
+       &#x1f60A; | `U+1F60A` | :-)
+       &#xF04A; | `U+F04A` | :-)
+       &#x1f610; | `U+1F610` | :-&vert;
+       &#xF04B; | `U+F04B` | :-(
+       &#x2639; | `U+2639` | :-(
+       &#x1f603; | `U+1F603` | :-D
+       &#x1f61D; | `U+1F61D` | :-p
+       &#x1f632; | `U+1F632` | :-o
+       &#x1f609; | `U+1F609` | ;-)
+       &#x2764; | `U+2764` | <3
+       &#x1f494; | `U+1F494` | </3
+       &copy; | `U+00A9` | (c)
+       &reg; | `U+00AE` | (R)
+   
+   8. Canonicalize some emojis:
+   
+       Non-canonical | Canonical equivalent
+       --- | ---
+       :) | :-)
+       :&vert; | :-&vert;
+       :( | :-(
+       :D | :-D
+       :p | :-p
+       :o | :-o
+       ;) | ;-)
 
 5. Transform the text to UTF-8 to produce a canonical byte stream.
 

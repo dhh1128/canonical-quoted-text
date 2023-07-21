@@ -37,7 +37,7 @@ Start with input content that has been transformed into plain text.
 
 1. Convert the text to Unicode, eliminating codepages as a source of difference. Represent the data in whichever encoding of Unicode (UTF-8, UTF-16, UTF-32...) is convenient; subsequent steps are described as Unicode operations rather than byte operations.
 
-2. Normalize the text to [Unicode's NFKC form](https://www.unicode.org/reports/tr15/). This converts CJK from half-width to full-width forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
+2. Normalize the text to [Unicode's NFKC form](https://www.unicode.org/reports/tr15/). This converts Chinese, Japanese, and Korean languages ([CJK](https://en.wikipedia.org/wiki/CJK_characters)) from half-width to full-width forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
 
 3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60;, `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
 
@@ -49,7 +49,7 @@ Start with input content that has been transformed into plain text.
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
    1. Replace all characters in the Unicode dash punctuation category (Pd); see [this list](https://unicodeplus.com/category/Pd) with the more conventional ASCII hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
-   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block and from the full width half of the CJK Half Width and Full Width Forms block) into their ASCII equivalents:
+   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block and from the full-width half of the CJK Half Width and Full Width Forms block) into their ASCII equivalents:
    
        CJK character | codepoint | ASCII equivalent
        --- |---------------| ---

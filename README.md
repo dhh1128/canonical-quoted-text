@@ -43,7 +43,7 @@ Start with input content that has been transformed into plain text.
 
 3. Normalize whitespace. This eliminates differences that are invisible, that are attributable to the preference of a typist, or that constitute variable layout choices.
     1. Replace each run of one of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
-    2. Trim all leading and trailing whitespace, where "whitespace" means any item in the Unicode character DB that is defined to have `White_Space=yes`.
+    2. Trim all leading and trailing whitespace, where "whitespace" means any item in the [Unicode Character DB](https://www.unicode.org/reports/tr44/) that is defined to have `White_Space=yes`.
     3. Replace all sequences of two or more whitespace characters with a single space.
    
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.

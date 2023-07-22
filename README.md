@@ -1,5 +1,5 @@
 # canonical-quoted-text
-A simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
+A simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.). Note the reference implementation in [cqt.py](cqt.py).
 
 ### Purpose
 Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it into a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, whitespace is deleted, capitalization or spelling is altered, the codepage changes, smart quotes turn into dumb quotes or two hyphens become an em dash.
@@ -12,11 +12,11 @@ The algorithm documented here is for such cases. It says that two chunks of text
 
 ### Official name and version
 
-The full name of this algorithm is "canonical quoted text 1.15", but it is typically abbreviated "cqt1.15".
+The full name of this algorithm is "canonical quoted text 1.14", but it is typically abbreviated "cqt1.14".
 
 The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("15") references a version of the Unicode standard that documents certain details. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
 
-The output of this algorithm can be piped to a hashing function to produce a canonical hash. The recommended notation for such an operation uses a lowercase hash name and parentheses around this algorithm: `Blake3(cqt1.15)`. The output of this algorithm can also be piped to a digital signature function to produce a canonical digital signature. The notation pattern is similar: `EdDSA(cqt1.15)`. A signature can also take as input a hash of the output of this function: `EdDSA(Blake3(cqt1.15))`. All strings in these notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
+The output of this algorithm can be piped to a hashing function to produce a canonical hash. The recommended notation for such an operation uses a lowercase hash name and parentheses around this algorithm: `Blake3(cqt1.14)`. The output of this algorithm can also be piped to a digital signature function to produce a canonical digital signature. The notation pattern is similar: `EdDSA(cqt1.14)`. A signature can also take as input a hash of the output of this function: `EdDSA(Blake3(cqt1.14))`. All strings in these notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
 
 ### Goals
 

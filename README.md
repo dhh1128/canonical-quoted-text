@@ -2,7 +2,7 @@
 A simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
 
 ### Purpose
-Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it into a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, a comma disappears, capitalization or spelling is altered, the codepage changes, smart quotes turn into dumb quotes or two hyphens become an em dash.
+Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it into a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, whitespace is deleted, capitalization or spelling is altered, the codepage changes, smart quotes turn into dumb quotes or two hyphens become an em dash.
 
 In this scenario, how can we evaluate whether the final text is *the same* as the original?
 
@@ -42,8 +42,8 @@ Start with input content that has been transformed into plain text.
 
 3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60;, `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
 
-3. Normalize whitespace. This eliminates invisible differences, that are attributable to the preference of a typist, or that constitute variable layout choices.
-    1. Replace each run of one of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
+3. Normalize whitespace. This eliminates invisible differences that are attributable to the preference of a typist or that constitute variable layout choices.
+    1. Replace each run of any of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
     2. Trim all leading and trailing whitespace, where "whitespace" means any item in the [Unicode Character DB](https://www.unicode.org/reports/tr44/) that is defined to have `White_Space=yes`.
     3. Replace all sequences of two or more whitespace characters with a single space `U+0020`.
    
@@ -54,7 +54,7 @@ Start with input content that has been transformed into plain text.
    
        CJK character | Codepoint | ASCII equivalent
        --- |---------------| ---
-       Ideographic comma <code>&#x3001</code> | `U+3001` | , (ordinary comma, `U+002C`)
+       Ideographic comma <code>&#x3001;</code> | `U+3001` | , (ordinary comma, `U+002C`)
        Ideographic full stop <code>&#x3002;</code> | `U+3002` |  , (ordinary full stop, `U+002E`)
        CJK fullwidth ASCII printable chars | `U+FF01` to `U+FF5E` | codepoint - 0xFEE0: ordinary ! to ~
    

@@ -41,9 +41,9 @@ Start with input content that has been transformed into plain text.
 
 3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60;, `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
 
-3. Normalize whitespace. This eliminates differences that are invisible, that are attributable to the preference of a typist, or that constitute variable layout choices.
+3. Normalize whitespace. This eliminates invisible differences, that are attributable to the preference of a typist, or that constitute variable layout choices.
     1. Replace each run of one of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
-    2. Trim all leading and trailing whitespace, where "whitespace" means any item in the Unicode character DB that is defined to have `White_Space=yes`.
+    2. Trim all leading and trailing whitespace, where "whitespace" means any item in the [Unicode Character DB](https://www.unicode.org/reports/tr44/) that is defined to have `White_Space=yes`.
     3. Replace all sequences of two or more whitespace characters with a single space `U+0020`.
    
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
@@ -51,10 +51,10 @@ Start with input content that has been transformed into plain text.
    2. Replace any runs of multiple hyphens with a single hyphen.
    3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block and from the full-width half of the CJK Half Width and Full Width Forms block) into their ASCII equivalents:
    
-       CJK character | codepoint | ASCII equivalent
+       CJK character | Codepoint | ASCII equivalent
        --- |---------------| ---
-       ideographic comma <code>&#x3001</code> | `U+3001` | , (ordinary comma, `U+002C`)
-       ideographic full stop <code>&#x3002;</code> | `U+3002` |  , (ordinary full stop, `U+002E`)
+       Ideographic comma <code>&#x3001</code> | `U+3001` | , (ordinary comma, `U+002C`)
+       Ideographic full stop <code>&#x3002;</code> | `U+3002` |  , (ordinary full stop, `U+002E`)
        CJK fullwidth ASCII printable chars | `U+FF01` to `U+FF5E` | codepoint - 0xFEE0: ordinary ! to ~
    
    4. Replace an ellipsis (&#x2026; `U+2026`) with three instances of the period/full stop `.` (`U+002E`).
@@ -62,17 +62,17 @@ Start with input content that has been transformed into plain text.
    6. Replace the fraction slash (&#x2044; `U+2044`) with the ordinary slash `/` (`U+002F`).
    7. Replace various characters that are used as quotes with the least common denominator, the ASCII apostrophe `'` (`U+0027`):
    
-       Quote Char | codepoint
+       Quote Char | Codepoint
        --- | --- 
        ASCII double-quote `"` | (`U+0022`)
-       left smart apostrophe <code>&#x2018;</code> | `U+2018`
-       right smart apostrophe <code>&#x2019;</code> | `U+2019`
-       left smart double quote <code>&#x201c;</code> | `U+201C`
-       right smart double quote <code>&#x201d;</code> | `U+201D`
-       left guillemet <code>&#x00AB;</code> | `U+00AB`
-       right guillement <code>&#x00BB;</code> | `U+00BB`
-       single left-angle quote <code>&#x2039;</code> | `U+2039`
-       single right-angle quote <code>&#x203A;</code> | `U+203A`
+       Left smart apostrophe <code>&#x2018;</code> | `U+2018`
+       Right smart apostrophe <code>&#x2019;</code> | `U+2019`
+       Left smart double quote <code>&#x201c;</code> | `U+201C`
+       Right smart double quote <code>&#x201d;</code> | `U+201D`
+       Left guillemet <code>&#x00AB;</code> | `U+00AB`
+       Right guillement <code>&#x00BB;</code> | `U+00BB`
+       Single left-angle quote <code>&#x2039;</code> | `U+2039`
+       Single right-angle quote <code>&#x203A;</code> | `U+203A`
        CJK left-angle quote <code>&#x3008;</code> | `U+3008`
        CJK right-angle quote <code>&#x3009;</code> | `U+3009`
        CJK double left-angle quote <code>&#x300A;</code> | `U+300A`
@@ -83,7 +83,7 @@ Start with input content that has been transformed into plain text.
    8. Remove all spaces that immediately precede or immediately follow a punctuation character.
    9. Undo some common autocorrect transformations in word processors by converting fancier Unicode characters to their ASCII equivalents:
    
-       Unicode character | codepoint | ASCII equivalent
+       Unicode character | Codepoint | ASCII equivalent
        --- | --- | ---
        &#x1f60A; | `U+1F60A` | :-)
        &#x1f610; | `U+1F610` | :-&vert;
@@ -121,7 +121,7 @@ This algorithm collapses some differences that are usually insignificant in writ
 
 This algorithm also leaves intact some differences that some audiences may wish to collapse. Notably, it does not normalize case. Also: 
 
-* A poetry sample written on separate lines produces different output from a poetry written with lines separated by slashes ("Once upon a midnight dreary / While I pondered, weak and weary").
+* A poetry sample written on separate lines produces different output from poetry written with lines separated by slashes ("Once upon a midnight dreary / While I pondered, weak and weary").
 * Emojis that differ only in skin tone are considered different.
 * ASCII emphasis (e.g., `I'm *really* serious`) is untouched and does not equate to italics or bolded text.
 * Most dingbats (e.g., fancy versions of question marks and check marks) are not normalized.

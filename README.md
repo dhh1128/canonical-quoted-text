@@ -50,7 +50,7 @@ Start with input content that has been transformed into plain text.
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
    1. Replace all characters in the Unicode dash punctuation category (Pd); see [this list](https://unicodeplus.com/category/Pd) with the more conventional ASCII hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
-   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block from the fullwidth half of the CJK halfwidth and fullwidth Forms block) into their ASCII equivalents:
+   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block from the fullwidth half of the CJK Halfwidth and Fullwidth Forms block) into their ASCII equivalents:
    
        CJK character | codepoint | ASCII equivalent
        --- |---------------| ---

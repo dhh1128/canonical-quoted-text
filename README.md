@@ -35,9 +35,10 @@ Start with input content that has been transformed into plain text.
 
 >This is a precondition rather than a step in our algorithm. "Plain text" means that the text is ready to be interpreted as IANA media type `text/plain`: it contains no markup intended as instructions to a different formatting engine (e.g., escape sequences, HTML/XML tags, character entities...). Many programs that edit rich text already implement such transformations &mdash; when a user copies text, they place both a richly formatted and a "plain text" version of the content on the clipboard. However, intent matters; including an HTML tag in plain text is correct, if the plain text is *intended* to be an instruction about how to construct an HTML tag &mdash; and it is not correct otherwise. In other words, any required transformation depends on the initial media type.
 
+
 1. Convert the text to Unicode, eliminating codepages as a source of difference. Represent the data in whichever encoding of Unicode (UTF-8, UTF-16, UTF-32...) is convenient; subsequent steps are described as Unicode operations rather than byte operations.
 
-2. Normalize the text to [Unicode's NFKC form](https://www.unicode.org/reports/tr15/). This converts Chinese, Japanese, and Korean languages ([CJK](https://en.wikipedia.org/wiki/CJK_characters)) from half-width to full-width forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
+2. Normalize the text to [Unicode's Normalization Form KC (NFKC)](https://www.unicode.org/reports/tr15/). This converts Chinese, Japanese, and Korean languages ([CJK](https://en.wikipedia.org/wiki/CJK_characters)) from [halfwidth]((https://en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block))) to [fullwidth](https://en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)) forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
 
 3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60;, `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
 
@@ -49,7 +50,7 @@ Start with input content that has been transformed into plain text.
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
    1. Replace all characters in the Unicode dash punctuation category (Pd); see [this list](https://unicodeplus.com/category/Pd) with the more conventional ASCII hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
-   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block and from the full-width half of the CJK Half Width and Full Width Forms block) into their ASCII equivalents:
+   3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block from the fullwidth half of the CJK Halfwidth and Fullwidth Forms block) into their ASCII equivalents:
    
        CJK character | Codepoint | ASCII equivalent
        --- |---------------| ---
@@ -115,7 +116,7 @@ Start with input content that has been transformed into plain text.
 ### Caveats
 This algorithm collapses some differences that are usually insignificant in written text. Note the word "usually". The algorithm may not distinguish certain input texts having subtle distinctions. For example:
 
-* Because the algorithm collapses the distinction between half-width and full-width forms, two Chinese sentences &mdash; one written with half-width forms, and the other written with full-width forms &mdash; will produce the same output.
+* Because the algorithm collapses the distinction between halfwidth and fullwidth forms, two Chinese sentences &mdash; one written with halfwidth forms, and the other written with fullwidth forms &mdash; will produce the same output.
 * Because of the conversion of certain mathematical operators to ASCII, and because the algorithm normalizes punctuation, two sentences that contain mathematical or computer science expressions might produce the same output when they are actually slightly different (e.g., the expression `i--` and the expression `i-` produce identical output; so do <code>x&#xb2;</code>, <code>x&#x2082;</code>, and <code>x2</code>).
 * Because the algorithm normalizes punctuation, text that is picky about punctuation may lose precision. For example, the instruction from an English teacher, `Always place a comma inside double quotes: "abc,"` is normalized to the same value as `Always place a comma inside double quotes: 'abc',` (which contains no double quotes, despite what the text says).  
 

@@ -118,9 +118,9 @@ This algorithm collapses some differences that are usually insignificant in writ
 
 * Because the algorithm collapses the distinction between halfwidth and fullwidth forms, two Chinese sentences &mdash; one written with halfwidth forms, and the other written with fullwidth forms &mdash; will produce the same output.
 * Because of the conversion of certain mathematical operators to ASCII, and because the algorithm normalizes punctuation, two sentences that contain mathematical or computer science expressions might produce the same output when they are actually slightly different (e.g., the expression `i--` and the expression `i-` produce identical output; so do <code>x&#xb2;</code>, <code>x&#x2082;</code>, and <code>x2</code>).
-* Because the algorithm normalizes punctuation, text that is picky about punctuation may lose precision. For example, the instruction from an English teacher, `Always place a comma inside double quotes: "abc,"` is normalized to the same value as `Always place a comma inside double quotes: 'abc',` (which contains no double quotes, despite what the text says).  
+* Because the algorithm normalizes punctuation, text that is picky about punctuation may lose precision. For example, the instruction from an English teacher, `Always place a comma inside double quotes: "abc,"` is normalized to the same value as `Always place a comma inside double quotes: 'abc,'` (which contains no double quotes, despite what the text says).  
 
-This algorithm also leaves intact some differences that some audiences may wish to collapse. Notably, it does not normalize case. Also: 
+This algorithm also leaves intact some differences that some audiences may wish to collapse. Notably, *it does not normalize case*. Also: 
 
 * A poetry sample written on separate lines produces different output from poetry written with lines separated by slashes ("Once upon a midnight dreary / While I pondered, weak and weary").
 * Emojis that differ only in skin tone are considered different.

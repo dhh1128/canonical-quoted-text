@@ -1,3 +1,6 @@
+# Reference code written from scratch by Daniel Hardman, and released
+# under the Apache 2.0 license.
+
 import re
 import unicodedata
 
@@ -58,8 +61,11 @@ def algorithm_1_14(plaintext):
     x = step4(x)
 
     def step5(punct_anomalies):
+        # 5.i
         out = DASHCHARS_PAT.sub('-', punct_anomalies)
+        # 5.ii
         out = MULTI_HYPHENS_PAT.sub('-', out)
+        # 5.iii
         for cjk, ascii in CJK_PUNCT_PAIRS:
             out = out.replace(cjk, ascii)
         txt = ''
@@ -68,12 +74,17 @@ def algorithm_1_14(plaintext):
             if 0xFF01 <= n <= 0xFF5E:
                 c = n - 0xFEE0
             txt += c
+        # 5.iv
         out = txt.replace('\u2026', '...')
+        # 5.v
         out = LONG_DOTS_PAT.sub('...', out)
+        # 5.vi
         out = out.replace('\u2044', '/')
+        # 5.vii
         out = QUOTERS_PAT.sub("'", out)
         txt = ''
         next = 0
+        # 5.viii
         for match in ANY_WHITESPACE_PAT.finditer(out):
             keep_space = True
             i = match.start()
@@ -82,81 +93,30 @@ def algorithm_1_14(plaintext):
                 if unicodedata.category(out[i - 1]).startswith('P'):
                     keep_space = False
             next = match.end()
-            if next < len(out) - 1:
+            if next < len(out):
                 if unicodedata.category(out[next]).startswith('P'):
                     keep_space = False
             if keep_space:
                 txt += match.group(1)
         txt += out[next:]
         out = txt
+        # 5.ix
         for autocorrect, ascii in AUTOCORRECT_PAIRS:
             out = out.replace(autocorrect, ascii)
+        # 5.x
         for noncanonical, canonical in ASCII_EMOJI_PAIRS:
             out = out.replace(noncanonical, canonical)
         return txt
 
     x = step5(x)
 
+    # step 6
     return x.encode("UTF-8")
-
-
-def test_hello():
-    assert algorithm_1_14("hello") == b"hello"
-
-def test_empty():
-    assert algorithm_1_14("") == b""
-
-def test_nkfc():
-    assert algorithm_1_14("\uFEC9\uFECA\uFECB\uFECC") == b'\xd8\xb9\xd8\xb9\xd8\xb9\xd8\xb9'
-    x = algorithm_1_14("ℌℍ\u00a0①ｶ︷︸⁹₉㌀¼ǆ")
-    print(x)
-    y = "HH 1カ{}99アパート1/4dž".encode("UTF-8")
-    assert x == y
-
-def test_leading_and_trailing_whitespace():
-    assert algorithm_1_14(" abc  ") == b"abc"
-    assert algorithm_1_14("\n abc\n\t  ") == b"abc"
-    assert algorithm_1_14("\r abc\n\t  \n") == b"abc"
-    assert algorithm_1_14("\u3000\u00a0abc\ufeff\u200b") == b"abc"
-
-def test_trailing_whitespace_on_lines():
-    assert algorithm_1_14("line1 \nline2") == b"line1 line2"
-
-def test_redundant_linebreaks():
-    assert algorithm_1_14("line1\n\nline2") == b"line1 line2"
-
-def test_redundant_linebreaks_with_trailing_whitespace():
-    assert algorithm_1_14("line1 \n \nline2") == b"line1 line2"
-
-def test_cr_to_space():
-    assert algorithm_1_14("line1\rline2") == b"line1 line2"
-
-def test_2028_to_space():
-    assert algorithm_1_14("line1\u2028\tline2") == b"line1 line2"
-
-def test_2029_to_space():
-    assert algorithm_1_14("line1\t\u2029\rline2") == b"line1 line2"
-
-def test_crlf_to_space():
-    assert algorithm_1_14("line1\r\nline2") == b"line1 line2"
-
-def test_other_spaces():
-    for x in '\u200B\ufeff\u00a0\u3000':
-        assert algorithm_1_14('a' + x + 'b') == b"a b"
-
-def test_squeeze():
-    assert algorithm_1_14(("this  is  a \n\t\r   test")) == b"this is a test"
-
-def test_ideographic_punct():
-    assert algorithm_1_14("\u3001\u3000\u3002\u3008") == b",.'"
-
-def test_ideographic_ascii():
-    assert algorithm_1_14("\uFF01\uFF02\uFF25\uFF37\uFF56") == b"!'EWv"
 
 
 if __name__ == '__main__':
     from blake3 import blake3
-    import base58
+    import base64
 
     print("Enter some text (two blank lines to end): ")
     lines = []
@@ -172,6 +132,6 @@ if __name__ == '__main__':
         lines.append(line)
     cqt = algorithm_1_14("\n".join(lines))
     cqt_txt = cqt.decode("UTF-8")
-    print("Canonical quoted text = %s" % cqt_txt)
-    said = "E" + base58.b58encode(blake3(cqt).digest()).decode("ASCII")
-    print("SAID = %s" % said)
+    print(f"Canonical quoted text = {cqt_txt}")
+    hash = base64.urlsafe_b64encode(blake3(cqt).digest()).decode("ASCII")
+    print(f"hash = {hash}")

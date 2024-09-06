@@ -58,14 +58,18 @@ label {
   padding-top: 1em;
 }
 button {
-    margin-top: 2px;
+    margin-top: 4px;
     background-color: #d1c5c0;
     color: #491705;
     padding: 0.3em 0.6em;
-    border-radius: 5px;
+    border-radius: 10px;
     cursor: pointer;
     font-size: 107%;
+    border-color: #8d6d62;
 }
 button:hover {
     background-color: #baa8a1;
+}
+label.copier {
+    background-image: url("{{ site.baseurl }}/assets/copy-icon.png");
 }

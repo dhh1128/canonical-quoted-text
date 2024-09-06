@@ -37,26 +37,53 @@ title: Interactive CQT Tool
     const base64Url = base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     return prefix + base64Url;
   }
+</script>
 
+<label for="ïnput">Input (arbitrary text)</label>
+<textarea id="input" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
+<button onclick="cqt()">Canonicalize</button><br>
+<label for="output">Output (canonicalized)</label>
+<textarea id="output" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+<label for="blake3cesr">Blake3 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="blake3cesr" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+<label for="blake3">Blake3 of output (hex)</label>
+<textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+<label" for="sha256cesr">SHA2-256 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="sha256cesr" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
+<label for="sha256">SHA2-256 of output (hex)</label>
+<textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
+        
+<script>
   // Add event listener for "keydown" event
   document.addEventListener('keydown', function(event) {
     if (event.key === 'Enter' && (event.target === el('input') || event.target === el('button'))) {
       cqt();
     }
   });
+  function copyValue() {
+    // Did this occur where the copy icon is?
+    const rect = this.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const isRightmost16Pixels = clickX >= rect.width - 20;
+    if (!isRightmost16Pixels) {
+      return;
+    }
+    // Copy the value of the element with the ID specified in the "for" attribute
+    const forAttribute = this.getAttribute('for');
+    const targetElement = document.getElementById(forAttribute);
+    const value = targetElement.value;
+    navigator.clipboard.writeText(value);
+      .then(() => {
+        console.log('Value copied to clipboard:', value);
+      })
+      .catch((error) => {
+        console.error('Failed to copy value to clipboard:', error);
+      });
+  }
+  // Find each label in the DOM that has a "for" attribute
+  const labels = document.querySelectorAll('label[for]');  
+  // Add event listener to each label
+  labels.forEach(label => {
+    label.addEventListener('click', copyValue);
+  });  
 </script>
-
-<label>Input (arbitrary text)</label>
-<textarea id="input" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
-<button onclick="cqt()">Canonicalize</button><br>
-<label>Output (canonicalized)</label>
-<textarea id="output" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
-<label>Blake3 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
-<textarea id="blake3cesr" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-<label>Blake3 of output (hex)</label>
-<textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-<label>SHA2-256 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
-<textarea id="sha256cesr" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
-<label>SHA2-256 of output (hex)</label>
-<textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
-        

@@ -22,9 +22,20 @@ title: Interactive CQT Tool
     const decoder = new TextDecoder('utf-8');
     el('output').value = decoder.decode(canonical);
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
-    el('sha256').value = hexHash(sha256);
+    const hsha256 = hexHash(sha256); 
+    el('sha256').value = hsha256;
+    el('sha256cesr').value = cesrify(hsha256, 'I');
     const blake3 = await hashwasm.blake3(canonical);
     el('blake3').value = blake3;
+    el('blake3cesr').value = cesrify(blake3, 'E');
+  }
+  function cesrify(hexString, prefix) {
+    const byteArray = new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    let binary = '';
+    byteArray.forEach(byte => binary += String.fromCharCode(byte));
+    const base64String = btoa(binary);
+    const base64Url = base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return prefix + base64Url;
   }
 
   // Add event listener for "keydown" event
@@ -35,13 +46,17 @@ title: Interactive CQT Tool
   });
 </script>
 
-<label>Input</label>
+<label>Input (arbitrary text)</label>
 <textarea id="input" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
 <button onclick="cqt()">Canonicalize</button><br>
-<label>Output</label>
+<label>Output (canonicalized)</label>
 <textarea id="output" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
-<label>Blake3 (hex)</label>
+<label>Blake3 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="blake3cesr" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+<label>Blake3 of output (hex)</label>
 <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-<label>SHA256 (hex)</label>
+<label>SHA2-256 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="sha256cesr" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
+<label>SHA2-256 of output (hex)</label>
 <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
         

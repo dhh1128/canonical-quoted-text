@@ -1,7 +1,7 @@
 # CQT
 This is a spec for a simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
 
-An interactive form that lets you run the algorithm on arbitrary text is located [here](cqt.html).
+An interactive form that lets you run the algorithm on arbitrary text is located [here](form.html).
 
 A reference implementation exists in [cqt.py](cqt.py), with unit tests in [test_cqt.py](test_cqt.py). See also ports in [cqt.js](cqt.js), [Cqt.java](Cqt.java), [cqt.go](cqt.go), and [cqt.rs](cqt.rs). 
 

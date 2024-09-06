@@ -20,11 +20,11 @@ h1 {
     font-size: 20pt;
     color: #491705;
 }
-h2 {
+h2, label {
     font-weight: 400;
     font-size: 15pt;
 }
-h3, label {
+h3 {
     font-weight: 300;
     font-size: 13pt;
     color: #666666;
@@ -51,5 +51,14 @@ label, textarea, input {
   display: inline;
 }
 label {
-  margin-top: 1em;
-}   
+  padding-top: 1em;
+}
+button {
+    background-color: #f3e4da;
+    color: #491705;
+    padding: 0.5em 1em;
+}
+button:hover {
+    background-color: #491705;
+    color: #ecd1c1;
+}

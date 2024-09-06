@@ -19,11 +19,12 @@ title: Interactive CQT Tool
   }
   async function cqt() {
     const uni_canonical = algorithm_1_14(el('input').value);
+    el('output').value = uni_canonical;
     const encoder = new TextEncoder();
     const utf8_canonical = encoder.encode(uni_canonical);
     const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
     el('sha256').value = hex_hash(sha256);
-    const blake3 = await hash_wasm.blake3(utf8_canonical);
+    const blake3 = await hashWasm.blake3(utf8_canonical);
     el('blake3').value = hex_hash(blake3);
   }
 

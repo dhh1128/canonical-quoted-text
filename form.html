@@ -13,7 +13,11 @@ title: Interactive CQT Tool
     return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function reset() {
+    const encoder = new TextEncoder();
+    const utf8Bytes = encoder.encode(el('intext').value);
+    el('intextlen').value = utf8Bytes.length + ' bytes';
     el('outtext').value = '';
+    el('outtextlen').value = '';
     el('blake3cesr').value = '';
     el('blake3').value = '';
     el('sha256cesr').value = '';
@@ -21,6 +25,7 @@ title: Interactive CQT Tool
   }
   async function cqt() {
     const canonical = algorithm_1_14(el('intext').value);
+    el('outtextlen').value = canonical.length + ' bytes';
     const decoder = new TextDecoder('utf-8');
     el('outtext').value = decoder.decode(canonical);
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
@@ -42,10 +47,12 @@ title: Interactive CQT Tool
 </script>
 
 <label class="copier" for="intext">Input (arbitrary text)</label>
-<textarea id="intext" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
+<textarea id="intext" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" oninput="reset()"></textarea>
+<div style="text-align:right" id="intextlen"></div>
 <button onclick="cqt()">Canonicalize</button><br>
 <label class="copier" for="outtext">Output (canonicalized)</label>
 <textarea id="outtext" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+<div style="text-align:right" id="outtextlen"></div>
 <label class="copier" for="blake3cesr">Blake3 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
 <textarea id="blake3cesr" rows="1" cols="80" placeholder="CESR-encoded Blake3 hash will appear here" readonly></textarea>
 <label class="copier" for="blake3">Blake3 of output (hex)</label>
@@ -72,7 +79,7 @@ title: Interactive CQT Tool
     }
     // Copy the value of the element with the ID specified in the "for" attribute
     const forAttr = this.getAttribute('for');
-    const target = document.getElementById(forAttr);
+    const target = el(forAttr);
     const value = target.value;
     navigator.clipboard.writeText(value).then(() => {
         console.log('Value copied to clipboard:', value);

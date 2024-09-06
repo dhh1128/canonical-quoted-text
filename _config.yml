@@ -4,3 +4,10 @@ plugins:
 title: Canonical Quoted Text
 description: an algorithm for putting text in a standard form before hashing or signing
 show_downloads: false
+include:
+  - "*.html"
+  - "*.js"
+  - "*.py"
+  - "*.java"
+  - "*.go"
+  - "*.rs"

@@ -4,15 +4,8 @@ title: Interactive CQT Tool
 ---
 
         <script src="cqt.js"></script>
-        <script type="module">
-          let blake3;
-
-          // Load the module once
-          (async function() {
-              const blake3Module = await import('https://cdn.jsdelivr.net/npm/blake3@latest/dist/browser.js');
-              blake3 = blake3Module.default;
-          })();
-
+        <script src="https://cdn.jsdelivr.net/npm/hash-wasm@latest/dist/hash-wasm.min.js"></script>
+        <script>
           function el(id) {
             return document.getElementById(id);
           }
@@ -31,7 +24,7 @@ title: Interactive CQT Tool
             const utf8_canonical = encoder.encode(inputString);
             const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
             el('sha256').value = hex_hash(sha256);
-            const blake3 = await blake3.hash(utf8_canonical);
+            const blake3 = await hash_wasm.blake3(utf8_canonical);
             el('blake3').value = hex_hash(blake3);
           }
         </script>
@@ -39,9 +32,9 @@ title: Interactive CQT Tool
         <textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
         <button onclick="cqt()">Canonicalize</button><br>
         <label>Output</label><br>
-        <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+        <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea><br>
         <label>Blake3 (hex)</label><br>
-        <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+        <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea><br>
         <label>SHA256 (hex)</label><br>
-        <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
+        <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea><br>
         

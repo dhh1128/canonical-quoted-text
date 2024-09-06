@@ -5,7 +5,14 @@ title: Interactive CQT Tool
 
         <script src="cqt.js"></script>
         <script type="module">
-          import * as blake3 from 'https://cdn.jsdelivr.net/npm/blake3@latest/dist/blake3.min.js';
+          let blake3;
+
+          // Load the module once
+          (async function() {
+              const blake3Module = await import('https://cdn.jsdelivr.net/npm/blake3@latest/dist/browser.js');
+              blake3 = blake3Module.default;
+          })();
+
           function el(id) {
             return document.getElementById(id);
           }
@@ -28,13 +35,13 @@ title: Interactive CQT Tool
             el('blake3').value = hex_hash(blake3);
           }
         </script>
-        <label>Input</label>
+        <label>Input</label><br>
         <textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
         <button onclick="cqt()">Canonicalize</button><br>
-        <label>Output</label>
+        <label>Output</label><br>
         <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
-        <label>Blake3 (hex)</label>
+        <label>Blake3 (hex)</label><br>
         <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-        <label>SHA256 (hex)</label>
+        <label>SHA256 (hex)</label><br>
         <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
         

@@ -71,5 +71,21 @@ button:hover {
     background-color: #baa8a1;
 }
 label.copier {
+    background-repeat: no-repeat;
+    background-position: right bottom 4px;
     background-image: url("{{ site.baseurl }}/assets/copy-icon.png");
+}
+@keyframes copiedAnimation {
+    0% {
+        background-color: initial; /* Start with the initial color */
+    }
+    50% {
+        background-color: #ecd1c1; /* At 50%, the background becomes beige */
+    }
+    100% {
+        background-color: initial; /* Return to the original color */
+    }
+}
+.copied {
+    animation: copiedAnimation 0.5s ease-in-out;
 }

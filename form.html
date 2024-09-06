@@ -69,11 +69,17 @@ title: Interactive CQT Tool
       return;
     }
     // Copy the value of the element with the ID specified in the "for" attribute
-    const forAttribute = this.getAttribute('for');
-    const targetElement = document.getElementById(forAttribute);
-    const value = targetElement.value;
+    const forAttr = this.getAttribute('for');
+    const target = document.getElementById(forAttr);
+    const value = target.value;
     navigator.clipboard.writeText(value).then(() => {
         console.log('Value copied to clipboard:', value);
+        // Add the animation class to the textarea
+        target.classList.add('copied');
+        // Remove the animation class after the animation ends (0.5s in this case)
+        setTimeout(function() {
+          target.classList.remove('copied');
+        }, 500);
       })
       .catch((error) => {
         console.error('Failed to copy value to clipboard:', error);
@@ -84,5 +90,5 @@ title: Interactive CQT Tool
   // Add event listener to each label
   labels.forEach(label => {
     label.addEventListener('click', copyValue);
-  });  
+  });
 </script>

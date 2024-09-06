@@ -3,4 +3,4 @@ plugins:
 - jekyll-remote-theme
 title: Canonical Quoted Text
 description: an algorithm for putting text in a standard form before hashing or signing
-show_downloads: true
+show_downloads: false

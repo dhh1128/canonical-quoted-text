@@ -1,4 +1,4 @@
-# canonical-quoted-text
+# CQT
 A simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.). Note the reference implementation in python [cqt.py](cqt.py), and ports in javascript [cqt.js](cqt.js), java [Cqt.java](Cqt.java), go [cqt.go](cqt.go), and rust [cqt.rs](cqt.rs). Note also the unit tests in [test_cqt.py](test_cqt.py).
 
 ### Purpose
@@ -14,7 +14,7 @@ The algorithm documented here is for such cases. It says that two chunks of text
 
 The full name of this algorithm is "canonical quoted text 1.14", but it is typically abbreviated "cqt1.14".
 
-The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("14") references a version of the Unicode standard that documents certain details. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
+The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("14") references a version of the Unicode standard that documents certain details. Version 14 was chosen because it, or something newer, is widely supported by programming libraries. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
 
 The output of this algorithm can be piped to a hashing function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt1.14(text))`. The output of this algorithm can also be piped directly to a digital signature function to produce a *signature over canonical text* for text. For example: `signature over canonical text = EdDSA(cqt1.14(text))`. Perhaps better (because it allows text value to be disclosed later), a signature can also take as input a canonical hash, producing a *signature over canonical hash*. For example: `signature over canonical hash = EdDSA(Blake3(cqt1.14(text)))`. This formal notation can be used in specs and machine-processable metadata. If machines are parsing such expressions, all strings in the notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
 

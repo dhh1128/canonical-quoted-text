@@ -18,12 +18,12 @@ title: Interactive CQT Tool
     el('sha256').value = '';
   }
   async function cqt() {
-    const utf8_canonical = algorithm_1_14(el('input').value);
+    const canonical = algorithm_1_14(el('input').value);
     const decoder = new TextDecoder('utf-8');
-    el('output').value = decoder.decode(utf8Array);
-    const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
+    el('output').value = decoder.decode(canonical);
+    const sha256 = await crypto.subtle.digest('SHA-256', canonical);
     el('sha256').value = hexHash(sha256);
-    const blake3 = await hashwasm.blake3(utf8_canonical);
+    const blake3 = await hashwasm.blake3(canonical);
     el('blake3').value = hexHash(blake3);
   }
 

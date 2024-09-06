@@ -98,5 +98,5 @@ function algorithm_1_14(plaintext) {
     x = step5(x);
 
     // Step 6: Convert to UTF-8 (JavaScript strings are UTF-16).
-    return new TextEncoder().encode(x);
+    return new TextEncoder('utf-8').encode(x);
 }

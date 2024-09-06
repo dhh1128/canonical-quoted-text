@@ -72,8 +72,7 @@ title: Interactive CQT Tool
     const forAttribute = this.getAttribute('for');
     const targetElement = document.getElementById(forAttribute);
     const value = targetElement.value;
-    navigator.clipboard.writeText(value);
-      .then(() => {
+    navigator.clipboard.writeText(value).then(() => {
         console.log('Value copied to clipboard:', value);
       })
       .catch((error) => {

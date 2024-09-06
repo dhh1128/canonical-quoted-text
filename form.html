@@ -3,38 +3,46 @@ layout: default
 title: Interactive CQT Tool
 ---
 
-        <script src="cqt.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/hash-wasm@latest/dist/hash-wasm.min.js"></script>
-        <script>
-          function el(id) {
-            return document.getElementById(id);
-          }
-          function hex_hash(hashBuffer) {
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
-          }
-          function reset() {
-            el('output').value = '';
-            el('blake3').value = '';
-            el('sha256').value = '';
-          }
-          async function cqt() {
-            const uni_canonical = algorithm_1_14(el('input').value);
-            const encoder = new TextEncoder();
-            const utf8_canonical = encoder.encode(inputString);
-            const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
-            el('sha256').value = hex_hash(sha256);
-            const blake3 = await hash_wasm.blake3(utf8_canonical);
-            el('blake3').value = hex_hash(blake3);
-          }
-        </script>
-        <label>Input</label><br>
-        <textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
-        <button onclick="cqt()">Canonicalize</button><br>
-        <label>Output</label><br>
-        <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea><br>
-        <label>Blake3 (hex)</label><br>
-        <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea><br>
-        <label>SHA256 (hex)</label><br>
-        <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea><br>
+<script src="cqt.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hash-wasm@latest/dist/hash-wasm.min.js"></script>
+<script>
+  function el(id) {
+    return document.getElementById(id);
+  }
+  function hex_hash(hashBuffer) {
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function reset() {
+    el('output').value = '';
+    el('blake3').value = '';
+    el('sha256').value = '';
+  }
+  async function cqt() {
+    const uni_canonical = algorithm_1_14(el('input').value);
+    const encoder = new TextEncoder();
+    const utf8_canonical = encoder.encode(uni_canonical);
+    const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
+    el('sha256').value = hex_hash(sha256);
+    const blake3 = await hash_wasm.blake3(utf8_canonical);
+    el('blake3').value = hex_hash(blake3);
+  }
+
+  // Add event listener for "keydown" event
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter' && (event.target === el('input') || event.target === el('button'))) {
+      cqt();
+    }
+  });
+</script>
+
+<label>Input</label><br>
+<textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
+<button onclick="cqt()">Canonicalize</button><br>
+<label>Output</label><br>
+<textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea><br>
+<label>Blake3 (hex)</label><br>
+<textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea><br>
+<label>SHA256 (hex)</label><br>
+<textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea><br>
         

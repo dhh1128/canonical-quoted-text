@@ -5,7 +5,7 @@ title: Interactive CQT Tool
 
         <script src="cqt.js"></script>
         <script type="module">
-          import { blake3 } from "https://cdn.jsdelivr.net/npm/blake3/browser-async.js";
+          import * as blake3 from 'https://cdn.jsdelivr.net/npm/blake3@latest/dist/blake3.min.js';
           function el(id) {
             return document.getElementById(id);
           }

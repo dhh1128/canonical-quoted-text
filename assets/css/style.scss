@@ -47,18 +47,25 @@ a:hover {
     border-bottom: solid 1px #914f37;
 }
 a:visited { color: #914f37 }
-label, textarea, input {
-  display: inline;
+label, textarea, input[type="text"] {
+    width: 100%;
+    padding: 0.5em;
+    margin: 0.5em 0;
+    display: block;
+}
+textarea, input[type="text"] {
+    background-color: #fbf6f3;
 }
 label {
   padding-top: 1em;
 }
 button {
-    background-color: #f3e4da;
+    background-color: #d1c5c0;
     color: #491705;
     padding: 0.5em 1em;
+    border-radius: 5px;
+    cursor: pointer;
 }
 button:hover {
-    background-color: #491705;
-    color: #ecd1c1;
+    background-color: #baa8a1;
 }

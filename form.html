@@ -24,7 +24,7 @@ title: Interactive CQT Tool
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
     el('sha256').value = hexHash(sha256);
     const blake3 = await hashwasm.blake3(canonical);
-    el('blake3').value = hexHash(blake3);
+    el('blake3').value = blake3;
   }
 
   // Add event listener for "keydown" event

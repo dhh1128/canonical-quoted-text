@@ -13,14 +13,16 @@ title: Interactive CQT Tool
     return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function reset() {
-    el('output').value = '';
+    el('outtext').value = '';
+    el('blake3cesr').value = '';
     el('blake3').value = '';
+    el('sha256cesr').value = '';
     el('sha256').value = '';
   }
   async function cqt() {
-    const canonical = algorithm_1_14(el('input').value);
+    const canonical = algorithm_1_14(el('intext').value);
     const decoder = new TextDecoder('utf-8');
-    el('output').value = decoder.decode(canonical);
+    el('outtext').value = decoder.decode(canonical);
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
     const hsha256 = hexHash(sha256); 
     el('sha256').value = hsha256;
@@ -39,24 +41,24 @@ title: Interactive CQT Tool
   }
 </script>
 
-<label class="copier" for="ïnput">Input (arbitrary text)</label>
-<textarea id="input" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
+<label class="copier" for="intext">Input (arbitrary text)</label>
+<textarea id="intext" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
 <button onclick="cqt()">Canonicalize</button><br>
-<label class="copier" for="output">Output (canonicalized)</label>
-<textarea id="output" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
-<label class="copier" for="blake3cesr">Blake3 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
-<textarea id="blake3cesr" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-<label class="copier" for="blake3">Blake3 of output (hex)</label>
+<label class="copier" for="outtext">outtext (canonicalized)</label>
+<textarea id="outtext" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+<label class="copier" for="blake3cesr">Blake3 of outtext (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="blake3cesr" rows="1" cols="80" placeholder="CESR-encoded Blake3 hash will appear here" readonly></textarea>
+<label class="copier" for="blake3">Blake3 of outtext (hex)</label>
 <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
-<label class="copier" for="sha256cesr">SHA2-256 of output (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
-<textarea id="sha256cesr" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
-<label class="copier" for="sha256">SHA2-256 of output (hex)</label>
+<label class="copier" for="sha256cesr">SHA2-256 of outtext (<a href="https://trustoverip.github.io/tswg-cesr-specification" target="_cesr">CESR</a>)</label>
+<textarea id="sha256cesr" rows="1" cols="80" placeholder="CESR-encoded SHA256 hash will appear here" readonly></textarea>
+<label class="copier" for="sha256">SHA2-256 of outtext (hex)</label>
 <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
         
 <script>
   // Add event listener for "keydown" event
   document.addEventListener('keydown', function(event) {
-    if (event.key === 'Enter' && (event.target === el('input') || event.target === el('button'))) {
+    if (event.key === 'Enter' && (event.target === el('intext') || event.target === el('button'))) {
       cqt();
     }
   });

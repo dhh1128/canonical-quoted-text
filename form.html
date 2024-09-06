@@ -4,6 +4,37 @@ title: Interactive CQT Tool
 ---
 
         <script src="cqt.js"></script>
-        <textarea id="input" rows="20" cols="80" placeholder="Enter text to canonicalize" maxlength="16384"></textarea><br>
-        <button onclick="algorithm_1_14('hello')">Canonicalize</button><br>
-        <textarea id="output" rows="20" cols="80" placeholder="Canonicalized text will appear here"></textarea>
+        <script src="https://cdn.jsdelivr.net/npm/blake3/browser-async.js"></script>
+        <script>
+          function el(id) {
+            return document.getElementById(id);
+          }
+          function hex_hash(hashBuffer) {
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
+          }
+          function reset() {
+            el('output').value = '';
+            el('blake3').value = '';
+            el('sha256').value = '';
+          }
+          async function cqt() {
+            const uni_canonical = algorithm_1_14(el('input').value);
+            const encoder = new TextEncoder();
+            const utf8_canonical = encoder.encode(inputString);
+            const sha256 = await crypto.subtle.digest('SHA-256', utf8_canonical);
+            el('sha256').value = hex_hash(sha256);
+            const blake3 = await blake3.hash(utf8_canonical);
+            el('blake3').value = hex_hash(blake3);
+          }
+        </script>
+        <label>Input</label>
+        <textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
+        <button onclick="cqt()">Canonicalize</button><br>
+        <label>Output</label>
+        <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+        <label>Blake3 (hex)</label>
+        <textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+        <label>SHA256 (hex)</label>
+        <textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
+        

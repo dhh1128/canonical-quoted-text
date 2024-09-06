@@ -1,28 +1,35 @@
 <!DOCTYPE html>
-<html lang="en-US">
+<html lang="{{ site.lang | default: "en-US" }}">
   <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link rel="stylesheet" href="assets/css/style.css">
+{% seo %}
+    <link rel="stylesheet" href="{{ "/assets/css/style.css?v=" | append: site.github.build_revision | relative_url }}">
     <!--[if lt IE 9]>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv.min.js"></script>
     <![endif]-->
-    <link rel="shortcut icon" type="image/x-icon" href="assets/favicon.png"?>
+    {% include head-custom.html %}
   </head>
   <body>
     <div class="wrapper">
       <header>
-        <h1><a href="./">Canonical Quoted Text</a></h1>
-        <p>an algorithm for putting text in a standard form before hashing or signing</p>
+        <h1><a href="{{ "/" | absolute_url }}">{{ site.title | default: site.github.repository_name }}</a></h1>
+
+        {% if site.logo %}
+          <img src="{{site.logo}}" alt="Logo" />
+        {% endif %}
+
+        <p>{{ site.description | default: site.github.project_tagline }}</p>
 
       </header>
+
       <section>
         <script src="cqt.js"></script>
-        <textarea id="input" rows="10" cols="80" placeholder="Enter text to canonicalize"></textarea><br>
+        <textarea id="input" rows="20" cols="80" placeholder="Enter text to canonicalize" maxlength="16384"></textarea><br>
         <button onclick="algorithm_1_14('hello')">Canonicalize</button><br>
-        <textarea id="output" rows="10" cols="80" placeholder="Canonicalized text will appear here"></textarea>
+        <textarea id="output" rows="20" cols="80" placeholder="Canonicalized text will appear here"></textarea>
       </section>
       <footer>
 Content copyrighted with a <a href="https://creativecommons.org/licenses/by/4.0/deed.en">CC BY 4.0 license</a>.

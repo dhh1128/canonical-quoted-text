@@ -51,6 +51,9 @@ label, textarea, input[type="text"] {
     width: 100%;
     display: block;
 }
+textarea {
+    background-color: white;
+}
 textarea:read-only, input[type="text"]:read-only {
     background-color: #fbf6f3;
 }
@@ -80,7 +83,7 @@ label.copier {
         background-color: initial; /* Start with the initial color */
     }
     50% {
-        background-color: #ecd1c1; /* At 50%, the background becomes beige */
+        background-color: #e4bfa8; /* At 50%, the background becomes beige */
     }
     100% {
         background-color: initial; /* Return to the original color */

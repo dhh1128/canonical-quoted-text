@@ -49,7 +49,12 @@ title: Interactive CQT Tool
 
 <label class="copier" for="intext">Input (arbitrary text)</label>
 <textarea id="intext" rows="10" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" oninput="reset()"></textarea>
-<button onclick="cqt()">Canonicalize</button><div style="text-align:right" id="intextlen">0 bytes</div><br>
+<table>
+  <tr>
+    <td><button onclick="cqt()">Canonicalize</button></td>
+    <td style="text-align:right" id="intextlen">0 bytes</td>
+  </tr>
+</table>
 <label class="copier" for="outtext">Output (canonicalized)</label>
 <textarea id="outtext" rows="10" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
 <div style="text-align:right" id="outtextlen">? bytes</div>

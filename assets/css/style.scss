@@ -24,7 +24,7 @@ h2 {
     font-weight: 400;
     font-size: 15pt;
 }
-h3 {
+h3, label {
     font-weight: 300;
     font-size: 13pt;
     color: #666666;
@@ -47,4 +47,9 @@ a:hover {
     border-bottom: solid 1px #914f37;
 }
 a:visited { color: #914f37 }
-
+label, textarea, input {
+  display: inline-block;
+}
+label {
+  margin-top: 1em;
+}   

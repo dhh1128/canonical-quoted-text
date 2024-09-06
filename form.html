@@ -9,8 +9,7 @@ title: Interactive CQT Tool
   function el(id) {
     return document.getElementById(id);
   }
-  function hex_hash(hashBuffer) {
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
+  function hex_hash(bytes) {
     return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function reset() {
@@ -36,13 +35,13 @@ title: Interactive CQT Tool
   });
 </script>
 
-<label>Input</label><br>
-<textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea><br>
-<button onclick="cqt()">Canonicalize</button><br>
-<label>Output</label><br>
-<textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea><br>
-<label>Blake3 (hex)</label><br>
-<textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea><br>
-<label>SHA256 (hex)</label><br>
-<textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea><br>
+<label>Input</label>
+<textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
+<button onclick="cqt()">Canonicalize</button>
+<label>Output</label>
+<textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
+<label>Blake3 (hex)</label>
+<textarea id="blake3" rows="1" cols="80" placeholder="Blake3 hash will appear here" readonly></textarea>
+<label>SHA256 (hex)</label>
+<textarea id="sha256" rows="1" cols="80" placeholder="SHA256 hash will appear here" readonly></textarea>
         

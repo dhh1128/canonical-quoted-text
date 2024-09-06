@@ -4,7 +4,7 @@ title: Interactive CQT Tool
 ---
 
 <script src="cqt.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hash-wasm@latest/dist/hash-wasm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js"></script>
 <script>
   function el(id) {
     return document.getElementById(id);
@@ -38,7 +38,7 @@ title: Interactive CQT Tool
 
 <label>Input</label>
 <textarea id="input" rows="12" cols="80" placeholder="Enter text to canonicalize" maxlength="16384" onchange="reset()"></textarea>
-<button onclick="cqt()">Canonicalize</button>
+<button onclick="cqt()">Canonicalize</button><br>
 <label>Output</label>
 <textarea id="output" rows="12" cols="80" placeholder="Canonicalized text will appear here" readonly></textarea>
 <label>Blake3 (hex)</label>

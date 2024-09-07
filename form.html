@@ -25,10 +25,13 @@ title: Interactive CQT Tool
     el('sha256').value = '';
   }
   async function cqt() {
-    const canonical = algorithm_1_14(el('intext').value);
-    el('outtextlen').textContent = canonical.length + ' bytes';
+    intext = el('intext').value;
+    const canonical = algorithm_1_14(intext);
+    outtext = decoder.decode(canonical);
+    el('outtext').value = outtext;
+    comp = "different" ? intext == outtext : "identical";
+    el('outtextlen').textContent = canonical.length + comp + ' bytes';
     const decoder = new TextDecoder('utf-8');
-    el('outtext').value = decoder.decode(canonical);
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
     const hsha256 = hexHash(sha256); 
     el('sha256').value = hsha256;

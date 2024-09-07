@@ -6,11 +6,11 @@
 @import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
 
 body {
-    font-family: Open Sans;
+    font-family: "Open Sans";
     font-weight: 400;
     font-size: 12pt;
     background-color: white;
-    color: black;
+    color: #444;
 }
 h1, h2, h3 {
     font-family: 'Barlow Condensed';
@@ -44,9 +44,9 @@ a { color: #914f37 }
 a:hover {
     font-weight: inherit;
     color: #491705;
-    border-bottom: solid 1px #914f37;
+    border-bottom: solid 1px #e0b69cff;
 }
-a:visited { color: #914f37 }
+a:visited { color: #765043 }
 label, textarea, input[type="text"] {
     width: 100%;
     display: block;

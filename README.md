@@ -1,11 +1,13 @@
 # CQT
 This is a spec for a simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
 
+## Try it out!
 An interactive form that lets you run the algorithm on arbitrary text is located [here](form.html).
 
-A reference implementation exists in [cqt.py](cqt.py), with unit tests in [test_cqt.py](test_cqt.py). See also ports in [cqt.js](cqt.js), [Cqt.java](Cqt.java), [cqt.go](cqt.go), and [cqt.rs](cqt.rs). 
+## Implementations
+A reference implementation exists in [cqt.py](cqt.py), with unit tests in [test_cqt.py](test_cqt.py). See also ports in [cqt.js](cqt.js), [Cqt.java](Cqt.java), [cqt.go](cqt.go), and [cqt.rs](cqt.rs). Code is in the public domain; see [LICENSE](https://github.com/dhh1128/canonical-quoted-text/blob/main/LICENSE).
 
-### Purpose
+## Purpose
 Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it into a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, whitespace is deleted, capitalization or spelling is altered, the codepage changes, smart quotes turn into dumb quotes or two hyphens become an em dash.
 
 In this scenario, how can we evaluate whether the final text is *the same* as the original?
@@ -14,7 +16,7 @@ Of course, opinions about what constitutes *sameness* vary. There is no objectiv
 
 The algorithm documented here is for such cases. It says that two chunks of text are *the same* if, when transformed by the algorithm, they produce output that matches byte-for-byte.
 
-### Official name and version
+## Official name and version
 
 The full name of this algorithm is "canonical quoted text 1.14", but it is typically abbreviated "cqt1.14".
 
@@ -22,7 +24,7 @@ The name contains two numbers. The first number ("1") versions the logic of the 
 
 The output of this algorithm can be piped to a digest function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt1.14(text))`. The output of this algorithm can also be piped directly to a digital signature function to produce a *signature over canonical text* for text. For example: `signature over canonical text = EdDSA(cqt1.14(text))`. Perhaps better (because it allows text value to be disclosed later), a signature can also take as input a canonical hash, producing a *signature over canonical hash*. For example: `signature over canonical hash = EdDSA(Blake3(cqt1.14(text)))`. This formal notation can be used in specs and machine-processable metadata. If machines are parsing such expressions, all strings in the notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
 
-### Goals
+## Goals
 
 Given any two input text samples and a literate, thoughtful human who knows the natural language(s) that they embody, the intent is to provide an algorithm that achieves the following goals:
 
@@ -33,7 +35,7 @@ Given any two input text samples and a literate, thoughtful human who knows the 
 
 We live in an imperfect world, so this algorithm makes calculated tradeoffs in the first two goals. Also, the third goal is less important than the first two and might be sacrificed in corner cases. For more on this, see [Caveats](#caveats).
 
-### Algorithm
+## Algorithm
 
 Start with input content that has been transformed into plain text.
 
@@ -117,7 +119,7 @@ Start with input content that has been transformed into plain text.
 
 5. Transform the text to UTF-8 to produce a canonical byte stream.
 
-### Caveats
+## Caveats
 This algorithm collapses some differences that are usually insignificant in written text. Note the word "usually". The algorithm may not distinguish certain input texts having subtle distinctions. For example:
 
 * Because the algorithm collapses the distinction between halfwidth and fullwidth forms, two Chinese sentences &mdash; one written with halfwidth forms, and the other written with fullwidth forms &mdash; will produce the same output.

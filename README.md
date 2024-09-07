@@ -2,7 +2,7 @@
 This is a spec for a simple but powerful algorithm for canonicalizing chunks of text that flow not via files but via chat, copy/paste, or other non-file-oriented channels (social media, SMS, email, etc.).
 
 ## Try it out!
-An interactive form that lets you run the algorithm on arbitrary text is located [here](form.html).
+You can use an [interactive form to run the algorithm on arbitrary text](form.html).
 
 ## Implementations
 A reference implementation exists in [cqt.py](cqt.py), with unit tests in [test_cqt.py](test_cqt.py). See also ports in [cqt.js](cqt.js), [Cqt.java](Cqt.java), [cqt.go](cqt.go), and [cqt.rs](cqt.rs). Code is in the public domain; see [LICENSE](https://github.com/dhh1128/canonical-quoted-text/blob/main/LICENSE).

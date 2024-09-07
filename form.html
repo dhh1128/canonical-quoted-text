@@ -13,6 +13,7 @@ title: Interactive CQT Tool
     return Array.from(new Uint8Array(bytes)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
   function reset() {
+    console.writeText("reset");
     const encoder = new TextEncoder();
     const utf8Bytes = encoder.encode(el('intext').value);
     el('intextlen').textContent = utf8Bytes.length + ' bytes';
@@ -25,6 +26,7 @@ title: Interactive CQT Tool
     el('sha256').value = '';
   }
   async function cqt() {
+    console.writeText("cqt");
     const canonical = algorithm_1_14(el('intext').value);
     el('outtextlen').textContent = canonical.length + ' bytes';
     const decoder = new TextDecoder('utf-8');

@@ -39,12 +39,16 @@ footer {
     font-weight: 300;
     color: #666666;
     font-style: italic;
+    border-bottom: solid 1px #e0b69cff;
 }
-a { color: #914f37 }
+a { 
+    color: #914f37;
+    border-bottom: solid 1px #914f37;
+}
 a:hover {
     font-weight: inherit;
     color: #491705;
-    border-bottom: solid 1px #e0b69cff;
+    border-bottom: double 1px #491705;
 }
 a:visited { color: #765043 }
 label, textarea, input[type="text"] {

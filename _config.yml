@@ -1,10 +1,17 @@
-remote_theme: pages-themes/minimal@v0.2.0
-plugins:
-- jekyll-remote-theme
 title: Canonical Quoted Text
 description: an algorithm for putting text in a standard form before hashing or signing
+author:
+  name: "Daniel Hardman"
+  twitter: "dhh1128"
+  email: "daniel.hardman@gmail.com"
+plugins:
+  - jekyll-remote-theme
+  - jekyll-sitemap
+remote_theme: pages-themes/minimal@v0.2.0
 show_downloads: false
 include:
+  - robots.txt
+  - LICENSE
   - "*.html"
   - "*.js"
   - "*.py"

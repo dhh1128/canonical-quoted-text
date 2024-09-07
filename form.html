@@ -30,7 +30,7 @@ title: Interactive CQT Tool
     const decoder = new TextDecoder('utf-8');
     outtext = decoder.decode(canonical);
     el('outtext').value = outtext;
-    comp = (intext == outtext) ? "different" : "identical";
+    comp = (intext == outtext) ? " identical" : " different";
     el('outtextlen').textContent = canonical.length + comp + ' bytes';
     const sha256 = await crypto.subtle.digest('SHA-256', canonical);
     const hsha256 = hexHash(sha256); 

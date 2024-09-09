@@ -22,7 +22,7 @@ The full name of this algorithm is "canonical quoted text 1.14", but it is typic
 
 The name contains two numbers. The first number ("1") versions the logic of the algorithm, and the second number ("14") references a version of the Unicode standard that documents certain details. Version 14 was chosen because it, or something newer, is widely supported by programming libraries. For all mainstream modern languages, the Unicode standard is fairly stable, so the algorithm is likely to produce identical or near-identical results even if the second number varies slightly. This is similar to the spirit of [semver.org](https://semver.org), but its definition of minor version semantics varies from it slightly. 
 
-The output of this algorithm can be piped to a digest function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt1.14(text))`. The output of this algorithm can also be piped directly to a digital signature function to produce a *signature over canonical text* for text. For example: `signature over canonical text = EdDSA(cqt1.14(text))`. Perhaps better (because it allows text value to be disclosed later), a signature can also take as input a canonical hash, producing a *signature over canonical hash*. For example: `signature over canonical hash = EdDSA(Blake3(cqt1.14(text)))`. This formal notation can be used in specs and machine-processable metadata. If machines are parsing such expressions, all strings in the notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
+The output of this algorithm can be piped to a digest function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt1.14(text))`. The output of this algorithm can also be piped directly to a digital signature function to produce a *signature over canonical text*. For example: `signature over canonical text = EdDSA(cqt1.14(text))`. Perhaps better (because it allows text value to be disclosed later), a signature can also take as input a canonical hash, producing a *signature over canonical hash*. For example: `signature over canonical hash = EdDSA(Blake3(cqt1.14(text)))`. This formal notation can be used in specs and machine-processable metadata. If machines are parsing such expressions, all strings in the notations MUST be compared case-insensitively, with whitespace and all punctuation except parentheses removed.
 
 ## Goals
 
@@ -46,7 +46,7 @@ Start with input content that has been transformed into plain text.
 
 2. Normalize the text to [Unicode's Normalization Form KC (NFKC)](https://www.unicode.org/reports/tr15/). This converts Chinese, Japanese, and Korean languages ([CJK](https://en.wikipedia.org/wiki/CJK_characters)) from [halfwidth to fullwidth](https://en.wikipedia.org/w/index.php?title=Halfwidth_and_fullwidth_forms&oldid=1222443138) forms, breaks ligatures, decomposes fractions, standardizes variants, handles diacritics uniformly, flattens super- and subscripts, converts all numbers to Arabic numerals, and eliminates many other unimportant differences.
 
-3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60;, `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
+3. Replace all instances of the ampersand (&amp; `U+0038`), the small ampersand (&#xFE60; `U+FE60`), and the fullwidth ampersand (&#xFF06; `U+FF06`) with ` and ` (the word "and" with a space before and after).
 
 3. Normalize whitespace. This eliminates invisible differences that are attributable to the preference of a typist or that constitute variable layout choices.
     1. Replace each run of any of the following characters with a single space: `U+2028 Line Separator`, `U+2029 Paragraph Separator`, `U+200B Zero Width Space`, `U+FEFF Zero Width Non-Breaking Space`, `U+00A0 Non-Breaking Space`, `U+3000 ideographic space`, carriage return `U+000A` (`\r`), line feed `U+000D` (`\n`), tab (`\t`).
@@ -54,7 +54,7 @@ Start with input content that has been transformed into plain text.
     3. Replace all sequences of two or more whitespace characters with a single space `U+0020`.
    
 4. Normalize punctuation. This eliminates differences that are hard to see, that might be introduced by autocorrect in editors, or that are attributable to the preference of a typist.
-   1. Replace all characters in the Unicode dash punctuation category (Pd); see [this list](https://unicodeplus.com/category/Pd) with the more conventional ASCII hyphen `-` (`U+002D`).
+   1. Replace all characters in the Unicode dash punctuation category (Pd) &mdash; see [this list](https://unicodeplus.com/category/Pd) &mdash; with the more conventional ASCII hyphen `-` (`U+002D`).
    2. Replace any runs of multiple hyphens with a single hyphen.
    3. Convert some CJK characters (from Unicode's CJK Symbols and Punctuation block from the fullwidth half of the CJK Halfwidth and Fullwidth Forms block) into their ASCII equivalents:
    

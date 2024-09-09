@@ -71,7 +71,7 @@ Start with input content that has been transformed into plain text.
    
        Quote Char | Codepoint
        --- | --- 
-       ASCII double-quote `"` | (`U+0022`)
+       ASCII double-quote `"` | `U+0022`
        Left smart apostrophe <code>&#x2018;</code> | `U+2018`
        Right smart apostrophe <code>&#x2019;</code> | `U+2019`
        Left smart double quote <code>&#x201c;</code> | `U+201C`
@@ -92,30 +92,30 @@ Start with input content that has been transformed into plain text.
    
        Unicode character | Codepoint | ASCII equivalent
        --- | --- | ---
-       &#x1f60A; | `U+1F60A` | :-)
-       &#x1f610; | `U+1F610` | :-&vert;
-       &#x2639; | `U+2639` | :-(
-       &#x1f603; | `U+1F603` | :-D
-       &#x1f61D; | `U+1F61D` | :-p
-       &#x1f632; | `U+1F632` | :-o
-       &#x1f609; | `U+1F609` | ;-)
-       &#x2764; | `U+2764` | <3
-       &#x1f494; | `U+1F494` | </3
-       &copy; | `U+00A9` | (c)
-       &reg; | `U+00AE` | (R)
-       &bull; | `U+2022` | *
+       &#x1f60A; | `U+1F60A` | `:-)`
+       &#x1f610; | `U+1F610` | `:-|`
+       &#x2639; | `U+2639` | `:-(`
+       &#x1f603; | `U+1F603` | `:-D`
+       &#x1f61D; | `U+1F61D` | `:-p`
+       &#x1f632; | `U+1F632` | `:-o`
+       &#x1f609; | `U+1F609` | `;-)`
+       &#x2764; | `U+2764` | `<3`
+       &#x1f494; | `U+1F494` | `</3`
+       &copy; | `U+00A9` | `(c)`
+       &reg; | `U+00AE` | `(R)`
+       &bull; | `U+2022` | `*`
    
    10. Replace some ASCII emojis with their canonical equivalent:
    
        Non-canonical | Canonical equivalent
        --- | ---
-       :) | :-)
-       :&vert; | :-&vert;
-       :( | :-(
-       :D | :-D
-       :p | :-p
-       :o | :-o
-       ;) | ;-)
+       `:)` | `:-)`
+       `:|` | `:-|`
+       `:(` | `:-(`
+       `:D` | `:-D`
+       `:p` | `:-p`
+       `:o` | `:-o`
+       `;)` | `;-)`
 
 5. Transform the text to UTF-8 to produce a canonical byte stream.
 

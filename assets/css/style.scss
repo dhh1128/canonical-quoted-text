@@ -95,3 +95,42 @@ label.copier {
 .copied {
     animation: copiedAnimation 0.5s ease-in-out;
 }
+figcaption {
+    font-size: 85%;
+    font-style: italic;
+    color: #777777;
+}
+section { width: 664px; }
+div.wrapper { width: 1024px;}
+@media print, screen and (max-width: 1124px) {
+    div.wrapper {
+        width:auto;
+        margin: 0
+    }
+
+    header,section,footer {
+        float: none;
+        position: static;
+        width: auto
+    }
+
+    section {
+        border: 1px solid #e5e5e5;
+        border-width: 1px 0;
+        padding: 20px 0;
+        margin: 0 0 20px
+    }
+
+    header a small {
+        display: inline
+    }
+
+    header ul {
+        position: absolute;
+        right: 50px;
+        top: 52px
+    }
+}
+@media print, screen and (max-width: 960px) {
+    header { padding: 0 }
+}

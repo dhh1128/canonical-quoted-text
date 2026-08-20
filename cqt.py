@@ -45,6 +45,59 @@ DASH_PUNCTUATION = frozenset(
     "\u2e17\u2e1a\u2e3a\u2e3b\u2e40\u2e5d\u301c\u3030\u30a0"
     "\ufe31\ufe32\ufe58\ufe63\uff0d\U00010d6e\U00010ead"
 )
+
+
+def _codepoints(*ranges: str) -> frozenset[str]:
+    """Expand "0E01-0E3A"-style ranges into a set of scalars."""
+    out: set[str] = set()
+    for item in ranges:
+        first, _, last = item.partition("-")
+        for codepoint in range(int(first, 16), int(last or first, 16) + 1):
+            out.add(chr(codepoint))
+    return frozenset(out)
+
+
+# Unicode 17.0.0 Terminal_Punctuation, from PropList.txt. Punctuation that ends
+# a sentence, clause or word, and so attaches to the text on its LEFT. The ASCII
+# members are exactly ! , . : ; ? -- deliberately NOT the whole Po category,
+# which would drag in the solidus and turn "A & B / C" into "A & B/ C", nor the
+# apostrophe, which step 4 has already made ambiguous by folding every quote
+# character onto it.
+TERMINAL_PUNCTUATION = _codepoints(
+    "0021", "002C", "002E", "003A-003B", "003F", "037E", "0387", "0589", "05C3",
+    "060C", "061B", "061D-061F", "06D4", "0700-070A", "070C", "07F8-07F9",
+    "0830-0835", "0837-083E", "085E", "0964-0965", "0E5A-0E5B", "0F08",
+    "0F0D-0F12", "104A-104B", "1361-1368", "166E", "16EB-16ED", "1735-1736",
+    "17D4-17D6", "17DA", "1802-1805", "1808-1809", "1944-1945", "1AA8-1AAB",
+    "1B4E-1B4F", "1B5A-1B5B", "1B5D-1B5F", "1B7D-1B7F", "1C3B-1C3F", "1C7E-1C7F",
+    "2024", "203C-203D", "2047-2049", "2CF9-2CFB", "2E2E", "2E3C", "2E41", "2E4C",
+    "2E4E-2E4F", "2E53-2E54", "3001-3002", "A4FE-A4FF", "A60D-A60F", "A6F3-A6F7",
+    "A876-A877", "A8CE-A8CF", "A92F", "A9C7-A9C9", "AA5D-AA5F", "AADF",
+    "AAF0-AAF1", "ABEB", "FE12", "FE15-FE16", "FE50-FE52", "FE54-FE57", "FF01",
+    "FF0C", "FF0E", "FF1A-FF1B", "FF1F", "FF61", "FF64", "1039F", "103D0", "10857",
+    "1091F", "10A56-10A57", "10AF0-10AF5", "10B3A-10B3F", "10B99-10B9C",
+    "10F55-10F59", "10F86-10F89", "11047-1104D", "110BE-110C1", "11141-11143",
+    "111C5-111C6", "111CD", "111DE-111DF", "11238-1123C", "112A9", "113D4-113D5",
+    "1144B-1144D", "1145A-1145B", "115C2-115C5", "115C9-115D7", "11641-11642",
+    "1173C-1173E", "11944", "11946", "11A42-11A43", "11A9B-11A9C", "11AA1-11AA2",
+    "11C41-11C43", "11C71", "11EF7-11EF8", "11F43-11F44", "12470-12474",
+    "16A6E-16A6F", "16AF5", "16B37-16B39", "16B44", "16D6E-16D6F", "16E97-16E98",
+    "1BC9F", "1DA87-1DA8A",
+)
+
+# Unicode 17.0.0 Line_Break=SA, from LineBreak.txt: the scripts that do not
+# separate words with spaces and therefore need explicit break opportunities --
+# Thai, Lao, Khmer, Myanmar, Tai Tham, New Tai Lue, Ahom. In these scripts
+# U+200B is a real word separator rather than a layout artifact.
+SPACELESS_SCRIPTS = _codepoints(
+    "0E01-0E3A", "0E40-0E4E", "0E81-0E82", "0E84", "0E86-0E8A", "0E8C-0EA3",
+    "0EA5", "0EA7-0EBD", "0EC0-0EC4", "0EC6", "0EC8-0ECE", "0EDC-0EDF",
+    "1000-103F", "1050-108F", "109A-109F", "1780-17D3", "17D7", "17DC-17DD",
+    "1950-196D", "1970-1974", "1980-19AB", "19B0-19C9", "19DE-19DF", "1A20-1A5E",
+    "1A60-1A7C", "1AA0-1AAD", "A9E0-A9EF", "A9FA-A9FE", "AA60-AAC2", "AADB-AADF",
+    "11700-1171A", "1171D-1172B", "1173A-1173B", "1173F-11746",
+)
+
 QUOTE_CHARACTERS = frozenset(
     "\u0022\u2018\u2019\u201c\u201d\u00ab\u00bb\u2039\u203a"
     "\u3008\u3009\u300a\u300b\u300c\u300d"
@@ -264,18 +317,52 @@ def _collapse_unicode_whitespace(text: str) -> str:
     return "".join(out).strip(" ")
 
 
+def _remove_invisibles(text: str) -> str:
+    """Step 2: drop the four layout-only characters.
+
+    U+200B survives between two scalars from a script that does not separate
+    words with spaces, where it is the word separator rather than an artifact.
+    Both neighbours must qualify, so a stray U+200B injected at a script
+    boundary by a mailer or sanitizer is still removed.
+    """
+    out: list[str] = []
+    for index, char in enumerate(text):
+        if char not in REMOVED_INVISIBLES:
+            out.append(char)
+            continue
+        if char == "​":
+            before = text[index - 1] if index else None
+            after = text[index + 1] if index + 1 < len(text) else None
+            if before in SPACELESS_SCRIPTS and after in SPACELESS_SCRIPTS:
+                out.append(char)
+    return "".join(out)
+
+
 def _remove_spaces_adjacent_to_punctuation(text: str) -> str:
+    """Step 4.8: attach punctuation to the side it belongs to.
+
+    Punctuation is not symmetric. Opening punctuation binds to what follows it
+    and closing, final and terminal punctuation bind to what precedes, so a
+    space is removed on the side the punctuation attaches to and left alone on
+    the other. That keeps "ignorance, up" and "name: value" intact while still
+    converging "hello :)" and "hello \U0001f60a" on "hello:-)", which is what
+    this rule exists to do.
+    """
     out: list[str] = []
     cursor = 0
     for match in _SPACES.finditer(text):
         out.append(text[cursor : match.start()])
         before = text[match.start() - 1] if match.start() else None
         after = text[match.end()] if match.end() < len(text) else None
-        adjacent = (
-            (before is not None and unicodedata.category(before).startswith("P"))
-            or (after is not None and unicodedata.category(after).startswith("P"))
+        attaches_left = after is not None and (
+            after in TERMINAL_PUNCTUATION
+            or unicodedata.category(after) in ("Pe", "Pf")
         )
-        if not adjacent:
+        attaches_right = before is not None and unicodedata.category(before) in (
+            "Ps",
+            "Pi",
+        )
+        if not (attaches_left or attaches_right):
             out.append(" ")
         cursor = match.end()
     out.append(text[cursor:])
@@ -284,7 +371,7 @@ def _remove_spaces_adjacent_to_punctuation(text: str) -> str:
 
 def _canonicalize_prose(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
-    text = "".join(char for char in text if char not in REMOVED_INVISIBLES)
+    text = _remove_invisibles(text)
     text = _collapse_unicode_whitespace(text)
     while True:
         previous = text
@@ -344,7 +431,7 @@ def _after_normalization(plaintext: str) -> str:
     """``plaintext`` with steps 1 and 2 applied to prose, spans left intact."""
     text, protected = _protect(plaintext)
     text = unicodedata.normalize("NFKC", text)
-    text = "".join(char for char in text if char not in REMOVED_INVISIBLES)
+    text = _remove_invisibles(text)
     return _PROTECTED_MARKER.sub(lambda match: protected[match.group()], text)
 
 

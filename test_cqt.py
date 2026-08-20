@@ -6,7 +6,13 @@ import pytest
 
 import unicodedata2 as unicodedata
 
-from cqt import CqtError, DASH_PUNCTUATION, algorithm_2_17
+from cqt import (
+    SPACELESS_SCRIPTS,
+    TERMINAL_PUNCTUATION,
+    CqtError,
+    DASH_PUNCTUATION,
+    algorithm_2_17,
+)
 
 
 GOLDENS_PATH = Path(__file__).parent / "goldens" / "cqt2.17.json"
@@ -159,3 +165,26 @@ def test_successful_goldens_are_idempotent(case):
     once = algorithm_2_17(case["input"])
     twice = algorithm_2_17(once.decode("utf-8"))
     assert twice == once
+
+
+def test_terminal_punctuation_set_matches_unicode_17():
+    # ASCII members are the whole reason this property was chosen over Po: it
+    # excludes the solidus and the apostrophe.
+    assert {c for c in TERMINAL_PUNCTUATION if ord(c) < 128} == set("!,.:;?")
+    assert "/" not in TERMINAL_PUNCTUATION
+    assert "'" not in TERMINAL_PUNCTUATION
+    assert len(TERMINAL_PUNCTUATION) == 291
+
+
+def test_spaceless_scripts_set_matches_unicode_17():
+    assert len(SPACELESS_SCRIPTS) == 757
+    for char in "กກကក":  # Thai, Lao, Myanmar, Khmer
+        assert char in SPACELESS_SCRIPTS
+    for char in "A一कا":       # Latin, CJK, Devanagari, Arabic
+        assert char not in SPACELESS_SCRIPTS
+
+
+def test_emoticon_convergence_is_why_the_spacing_rule_exists():
+    # Every spelling must land on the same bytes, with and without the space.
+    forms = ["hello \U0001f60a", "hello :)", "hello :-)", "hello\U0001f60a"]
+    assert len({algorithm_2_17(f) for f in forms}) == 1

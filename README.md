@@ -101,7 +101,18 @@ Remove these four layout-only characters from prose:
 
 Do not remove `U+200C ZERO WIDTH NON-JOINER` or `U+200D ZERO WIDTH JOINER`; they can be linguistically meaningful. Other accepted format and variation characters are preserved unless another rule explicitly transforms them.
 
-Removing `U+200B` has a known cost outside Latin script. Thai, Lao and Khmer are written without spaces between words and use `U+200B` as a genuine word or line-break separator, so canonicalization merges segmentations that a reader of those scripts distinguishes. This is accepted deliberately: `U+200B` is also the artifact most often injected by chat clients, mailers and sanitizers, which is exactly the reformatting CQT exists to survive. Text that depends on `U+200B` to carry meaning belongs in a protected span.
+`U+200B` is also retained when the scalar immediately before it and the scalar immediately after it both have Unicode 17 `Line_Break` property value `SA`. Those are the scripts that do not separate words with spaces — Thai, Lao, Khmer, Myanmar, Tai Tham, New Tai Lue and Ahom — where `U+200B` is the word separator rather than a layout artifact, so removing it would merge words a reader of those scripts distinguishes. Requiring both neighbours to qualify keeps the ordinary case intact: a `U+200B` injected by a mailer or sanitizer at a script boundary, or anywhere in Latin, Cyrillic, Arabic, Devanagari or CJK text, is still removed. The complete set is:
+
+```text
+U+0E01..U+0E3A  U+0E40..U+0E4E  U+0E81..U+0E82  U+0E84  U+0E86..U+0E8A
+U+0E8C..U+0EA3  U+0EA5  U+0EA7..U+0EBD  U+0EC0..U+0EC4  U+0EC6
+U+0EC8..U+0ECE  U+0EDC..U+0EDF  U+1000..U+103F  U+1050..U+108F
+U+109A..U+109F  U+1780..U+17D3  U+17D7  U+17DC..U+17DD  U+1950..U+196D
+U+1970..U+1974  U+1980..U+19AB  U+19B0..U+19C9  U+19DE..U+19DF
+U+1A20..U+1A5E  U+1A60..U+1A7C  U+1AA0..U+1AAD  U+A9E0..U+A9EF
+U+A9FA..U+A9FE  U+AA60..U+AAC2  U+AADB..U+AADF  U+11700..U+1171A
+U+1171D..U+1172B  U+1173A..U+1173B  U+1173F..U+11746
+```
 
 ### 3. Whitespace
 
@@ -125,7 +136,40 @@ Apply these transformations in order:
 5. Replace `U+2044 FRACTION SLASH` with `/`.
 6. Replace `U+0022`, `U+00AB`, `U+00BB`, `U+2018`, `U+2019`, `U+201C`, `U+201D`, `U+2039`, `U+203A`, and `U+3008`–`U+300D` with ASCII apostrophe `'` (`U+0027`).
 7. Apply the autocorrect tables below, longest source first when one source prefixes another.
-8. Remove an ASCII space if the scalar immediately before or after it has a Unicode 17 General Category beginning with `P`.
+8. Attach punctuation to the side it binds to, by removing an ASCII space when either:
+    - the scalar immediately **after** it has Unicode 17 General Category `Pe` or `Pf`, or the Unicode 17 `Terminal_Punctuation` property — punctuation that closes or ends what precedes it, and so binds leftward; or
+    - the scalar immediately **before** it has General Category `Ps` or `Pi` — punctuation that opens what follows it, and so binds rightward.
+
+    No space is removed on the other side of such a scalar, and none is removed around any other punctuation. `Pd` dashes, `Pc` connectors, the solidus, and the ASCII apostrophe therefore keep their spacing. The apostrophe needs no exception: `Terminal_Punctuation` does not include it, which matters because step 6 above has already folded every quote character onto it and destroyed the distinction between an opening and a closing quote.
+
+    The `Terminal_Punctuation` members below ASCII 128 are exactly `!`, `,`, `.`, `:`, `;` and `?`. The complete Unicode 17 set is:
+
+    ```text
+    U+0021  U+002C  U+002E  U+003A..U+003B  U+003F  U+037E  U+0387  U+0589
+    U+05C3  U+060C  U+061B  U+061D..U+061F  U+06D4  U+0700..U+070A  U+070C
+    U+07F8..U+07F9  U+0830..U+0835  U+0837..U+083E  U+085E  U+0964..U+0965
+    U+0E5A..U+0E5B  U+0F08  U+0F0D..U+0F12  U+104A..U+104B  U+1361..U+1368
+    U+166E  U+16EB..U+16ED  U+1735..U+1736  U+17D4..U+17D6  U+17DA
+    U+1802..U+1805  U+1808..U+1809  U+1944..U+1945  U+1AA8..U+1AAB
+    U+1B4E..U+1B4F  U+1B5A..U+1B5B  U+1B5D..U+1B5F  U+1B7D..U+1B7F
+    U+1C3B..U+1C3F  U+1C7E..U+1C7F  U+2024  U+203C..U+203D  U+2047..U+2049
+    U+2CF9..U+2CFB  U+2E2E  U+2E3C  U+2E41  U+2E4C  U+2E4E..U+2E4F
+    U+2E53..U+2E54  U+3001..U+3002  U+A4FE..U+A4FF  U+A60D..U+A60F
+    U+A6F3..U+A6F7  U+A876..U+A877  U+A8CE..U+A8CF  U+A92F  U+A9C7..U+A9C9
+    U+AA5D..U+AA5F  U+AADF  U+AAF0..U+AAF1  U+ABEB  U+FE12  U+FE15..U+FE16
+    U+FE50..U+FE52  U+FE54..U+FE57  U+FF01  U+FF0C  U+FF0E  U+FF1A..U+FF1B
+    U+FF1F  U+FF61  U+FF64  U+1039F  U+103D0  U+10857  U+1091F
+    U+10A56..U+10A57  U+10AF0..U+10AF5  U+10B3A..U+10B3F  U+10B99..U+10B9C
+    U+10F55..U+10F59  U+10F86..U+10F89  U+11047..U+1104D  U+110BE..U+110C1
+    U+11141..U+11143  U+111C5..U+111C6  U+111CD  U+111DE..U+111DF
+    U+11238..U+1123C  U+112A9  U+113D4..U+113D5  U+1144B..U+1144D
+    U+1145A..U+1145B  U+115C2..U+115C5  U+115C9..U+115D7  U+11641..U+11642
+    U+1173C..U+1173E  U+11944  U+11946  U+11A42..U+11A43  U+11A9B..U+11A9C
+    U+11AA1..U+11AA2  U+11C41..U+11C43  U+11C71  U+11EF7..U+11EF8
+    U+11F43..U+11F44  U+12470..U+12474  U+16A6E..U+16A6F  U+16AF5
+    U+16B37..U+16B39  U+16B44  U+16D6E..U+16D6F  U+16E97..U+16E98  U+1BC9F
+    U+1DA87..U+1DA8A
+    ```
 9. Repeat steps 1 through 8 of this section until none changes the text. This fixed point is required because removing a space can create a repeated punctuation run or ASCII emoticon across the former boundary.
 10. Replace every `&` with ` & `, collapse resulting ASCII-space runs, and trim. Because NFKC maps small and fullwidth ampersands to `&`, `A&B`, `A & B`, and `Ａ＆Ｂ` all become `A & B`.
 
@@ -188,14 +232,14 @@ Ordinary prose:
 
 ```text
 Input:  “Down  with ignorance, up with education!”
-Output: 'Down with ignorance,up with education!'
+Output: 'Down with ignorance, up with education!'
 ```
 
 Ampersands and protected URL data:
 
 ```text
 Input:  Research ＆ Development: https://example.test/a--b?x=1&y=2
-Output: Research & Development:https://example.test/a--b?x=1&y=2
+Output: Research & Development: https://example.test/a--b?x=1&y=2
 ```
 
 Fenced precision-sensitive content:

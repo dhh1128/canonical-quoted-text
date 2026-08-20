@@ -59,18 +59,26 @@ The protected span includes the opening and closing lines, the closing line endi
 
 ### Inline code spans
 
-A run of one or more backticks opens inline code when a later run of exactly the same length exists and is not part of a longer backtick run. The complete pair of delimiters and everything between them is protected. An unmatched run of backticks is ordinary prose.
+A run of one or more backticks opens inline code when a later run of exactly the same length exists and is not part of a longer backtick run. The complete pair of delimiters and everything between them is protected.
+
+Backtick runs are maximal. An unmatched run of backticks is ordinary prose in its entirety, and scanning resumes after the whole run: no proper suffix of an unmatched run may open a span. In the example below the three-backtick run is unmatched, so it does not become a two-backtick run that pairs with the later one, and both space runs collapse as ordinary prose.
+
+````text
+Input:  a  ```  ``
+Output: a ``` ``
+````
 
 ### HTTP(S) URL spans
 
-The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. Recognition is lexical; CQT does not validate the host, resolve the URL, or access the network.
+The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. Case-insensitivity is ASCII only: a scalar outside `A`–`Z` and `a`–`z` never matches a scheme character, so `U+017F LATIN SMALL LETTER LONG S` does not match `s`. [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3.1) restricts a scheme to ASCII letters, and an implementation whose case-insensitive comparison applies Unicode case folding will protect spans that are not URLs. Recognition is lexical; CQT does not validate the host, resolve the URL, or access the network.
 
 The protected span begins with the `h` and continues until the first:
 
 - Unicode 17 whitespace character;
-- control character;
 - `<`, `>`, `"`, or backtick; or
 - unmatched closing parenthesis.
+
+There is deliberately no control-character terminator. Every General Category `Cc` scalar is either in the `White_Space` set above, and so already terminates the span, or is rejected as `disallowed-control` before recognition begins.
 
 Parentheses within the URL are counted, so `https://example.test/Foo_(bar)` is one protected span. Other trailing punctuation is included rather than guessed to be prose, because it may legally belong to the URL. Percent encoding, Unicode spelling, scheme case, repeated hyphens, query ampersands, fragments, and allowed invisible format characters are all preserved exactly.
 
@@ -92,6 +100,8 @@ Remove these four layout-only characters from prose:
 - `U+FEFF ZERO WIDTH NO-BREAK SPACE`
 
 Do not remove `U+200C ZERO WIDTH NON-JOINER` or `U+200D ZERO WIDTH JOINER`; they can be linguistically meaningful. Other accepted format and variation characters are preserved unless another rule explicitly transforms them.
+
+Removing `U+200B` has a known cost outside Latin script. Thai, Lao and Khmer are written without spaces between words and use `U+200B` as a genuine word or line-break separator, so canonicalization merges segmentations that a reader of those scripts distinguishes. This is accepted deliberately: `U+200B` is also the artifact most often injected by chat clients, mailers and sanitizers, which is exactly the reformatting CQT exists to survive. Text that depends on `U+200B` to carry meaning belongs in a protected span.
 
 ### 3. Whitespace
 
@@ -148,7 +158,13 @@ The punctuation-space rule follows these mappings so typographic and ASCII input
 
 ### 5. Output
 
-Restore protected spans, then repeat protected-span recognition and prose canonicalization once on the candidate output. If the second result differs or raises a protected-syntax error, reject the original input with `unstable-protected-syntax`. This prevents removed prose characters from creating a different arrangement of backtick delimiters or URL boundaries.
+Restore protected spans, then repeat protected-span recognition and prose canonicalization once on the candidate output. If the second result differs or raises a protected-syntax error, reject the original input with `unstable-protected-syntax`.
+
+Comparing the two results is not sufficient by itself, because normalization can invent protected content while the bytes still settle. Additionally: apply steps 1 and 2 alone to the prose, restore the protected spans, and recognize protected content again. If that recognition differs from the recognition performed on the original input, reject with `unstable-protected-syntax`.
+
+For example, `http<U+200B>://example.test/a--b` contains no URL, because the invisible breaks the literal scheme. The prose rules therefore collapse `--` to `-` inside what the reader sees as a link, and the result is a well-formed URL that was never protected. A byte comparison cannot see this, because a third pass would change nothing. The same applies when NFKC creates a delimiter: a fullwidth `ｈｔｔｐｓ：／／`, a long s, a mathematical letter, or `U+FF40 FULLWIDTH GRAVE ACCENT`, which becomes a backtick and can open a code span.
+
+This test is deliberately confined to steps 1 and 2. A protected span may legitimately grow during step 4, because removing a space next to punctuation joins that punctuation to a preceding URL. `see https://example.test/a , then`, the French `voir https://example.test/a !`, and the Devanagari, Arabic and CJK sentence endings all rely on this, and none of them alters anything inside the link. Only normalization that *creates* protected content is unstable.
 
 Encode a stable result as UTF-8 without a byte-order mark. These bytes are the CQT 2.17 output.
 

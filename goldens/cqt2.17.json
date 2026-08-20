@@ -187,6 +187,131 @@
       "id": "reject-unstable-protected-syntax",
       "input": "`­`­`",
       "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "url-scheme-long-s-is-not-a-scheme",
+      "input": "httpſ://example.test/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "url-scheme-ascii-case-is-insensitive",
+      "input": "HtTpS://example.test/a--b",
+      "output": "HtTpS://example.test/a--b"
+    },
+    {
+      "id": "unmatched-backtick-run-is-wholly-prose",
+      "input": "a  ```  ``",
+      "output": "a ``` ``"
+    },
+    {
+      "id": "unmatched-longer-backtick-run-is-wholly-prose",
+      "input": "a  ````  ```",
+      "output": "a ```` ```"
+    },
+    {
+      "id": "matched-inline-run-still-protects",
+      "input": "use `a  b` here",
+      "output": "use `a  b` here"
+    },
+    {
+      "id": "invisible-in-scheme-is-unstable",
+      "input": "http​://example.test/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "soft-hyphen-in-scheme-is-unstable",
+      "input": "http­://example.test/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "word-joiner-in-scheme-is-unstable",
+      "input": "http⁠://example.test/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "zwnbsp-in-scheme-is-unstable",
+      "input": "http﻿://example.test/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "fullwidth-scheme-is-unstable",
+      "input": "ｈｔｔｐｓ：／／ex/a--b",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "invisible-inside-url-is-preserved",
+      "input": "https://example.test/a​b",
+      "output": "https://example.test/a​b"
+    },
+    {
+      "id": "empty-input",
+      "input": "",
+      "output": ""
+    },
+    {
+      "id": "whitespace-only-input",
+      "input": "　  　",
+      "output": ""
+    },
+    {
+      "id": "mixed-whitespace-run-collapses",
+      "input": "a\t 　b",
+      "output": "a b"
+    },
+    {
+      "id": "exotic-leading-trailing-whitespace-trimmed",
+      "input": " 　a  ",
+      "output": "a"
+    },
+    {
+      "id": "empty-inline-code-span",
+      "input": "Use `` in code",
+      "output": "Use `` in code"
+    },
+    {
+      "id": "whitespace-only-inline-code-span",
+      "input": "Use ` \t` in code",
+      "output": "Use ` \t` in code"
+    },
+    {
+      "id": "very-long-fence-run",
+      "input": "``````````````````````````````````\ncontent\n``````````````````````````````````",
+      "output": "``````````````````````````````````\ncontent\n``````````````````````````````````"
+    },
+    {
+      "id": "mixed-line-endings-in-fence",
+      "input": "```\r\ncontent\rline2\n```",
+      "output": "```\r\ncontent\rline2\n```"
+    },
+    {
+      "id": "soft-hyphen-inside-fence-preserved",
+      "input": "```\n­\n```",
+      "output": "```\n­\n```"
+    },
+    {
+      "id": "url-span-grows-past-spaced-punctuation",
+      "input": "see https://example.test/a , then",
+      "output": "see https://example.test/a,then"
+    },
+    {
+      "id": "url-span-grows-french-spaced-bang",
+      "input": "voir https://example.test/a !",
+      "output": "voir https://example.test/a!"
+    },
+    {
+      "id": "url-span-grows-danda",
+      "input": "राम https://example.test/a ।",
+      "output": "राम https://example.test/a।"
+    },
+    {
+      "id": "fullwidth-grave-creates-inline-code",
+      "input": "x ｀a  b｀ y",
+      "error": "unstable-protected-syntax"
+    },
+    {
+      "id": "fullwidth-colon-solidus-scheme-is-unstable",
+      "input": "https：／／example.test/a--b",
+      "error": "unstable-protected-syntax"
     }
   ]
 }

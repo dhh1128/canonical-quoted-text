@@ -77,7 +77,11 @@ ASCII_AUTOCORRECT_PAIRS = (
 )
 
 _FENCE_OPEN = re.compile(r"^ {0,3}(`{3,})([^`\r\n]*)$")
-_URL_START = re.compile(r"https?://", re.IGNORECASE)
+# re.ASCII is load-bearing. Without it, IGNORECASE on a str pattern applies full
+# Unicode case folding, so U+017F LATIN SMALL LETTER LONG S matches the "s" of
+# "https" and "httpſ://..." is protected as a URL. RFC 3986 section 3.1 restricts
+# a scheme to ASCII ALPHA, so that match is simply wrong.
+_URL_START = re.compile(r"https?://", re.IGNORECASE | re.ASCII)
 _MULTI_HYPHEN = re.compile(r"-{2,}")
 _LONG_DOTS = re.compile(r"\.{4,}")
 _SPACES = re.compile(r" +")
@@ -167,6 +171,10 @@ def _url_end(text: str, start: int, limit: int) -> int:
     paren_depth = 0
     while i < limit:
         char = text[i]
+        # The Cc test is unreachable defence in depth: validation has already
+        # rejected every Cc scalar that is not White_Space, and the White_Space
+        # ones terminate on the first test. Kept so a reordering of the passes
+        # cannot silently swallow a control character into a URL.
         if char in WHITE_SPACE or char in '<>"`' or unicodedata.category(char) == "Cc":
             break
         if char == "(":
@@ -194,6 +202,13 @@ def _inline_and_url_spans(text: str, start: int, end: int) -> list[_Span]:
                 spans.append(_Span(i, span_end))
                 i = span_end
                 continue
+            # An unmatched run is ordinary prose in its entirety, so resume AFTER
+            # it. Advancing one character would re-examine a proper suffix of the
+            # run as a shorter run, which can pair with a later run and protect
+            # text the prose rules should have normalized. It also made scanning
+            # quadratic, since every position in a long run rescanned the tail.
+            i = run_end
+            continue
 
         url = _URL_START.match(text, i, end)
         if url:
@@ -320,6 +335,42 @@ def _canonicalize_once(plaintext: str) -> str:
     return _PROTECTED_MARKER.sub(lambda match: protected[match.group()], text)
 
 
+def _protected_signature(text: str) -> tuple[str, ...]:
+    """Every protected span recognized in ``text``, in order."""
+    return tuple(text[span.start : span.end] for span in _opaque_spans(text))
+
+
+def _after_normalization(plaintext: str) -> str:
+    """``plaintext`` with steps 1 and 2 applied to prose, spans left intact."""
+    text, protected = _protect(plaintext)
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(char for char in text if char not in REMOVED_INVISIBLES)
+    return _PROTECTED_MARKER.sub(lambda match: protected[match.group()], text)
+
+
+def _normalization_creates_protected_content(plaintext: str) -> bool:
+    """Did NFKC or invisible removal invent a protected span?
+
+    This is the dangerous direction, and the one a byte comparison cannot see.
+    "http\u200b://x/a--b" holds no URL, so the prose rules collapse "--" inside
+    what the reader sees as a link, and the result is a stable URL on the next
+    pass. NFKC does the same from a fullwidth or long-s spelling, and turns
+    U+FF40 FULLWIDTH GRAVE ACCENT into a backtick that opens a code span.
+
+    Deliberately narrower than comparing the input's spans with the final
+    output's. A URL followed by a space and then punctuation legitimately grows
+    on the second pass, because removing the space joins the punctuation to the
+    span -- that is ordinary English ("a , then") and required French typography
+    ("a !"), as well as Arabic, Devanagari and CJK sentence endings. Nothing was
+    altered inside the link there, so it must keep working.
+    """
+    try:
+        normalized = _after_normalization(plaintext)
+    except CqtError:
+        return True
+    return _protected_signature(plaintext) != _protected_signature(normalized)
+
+
 def algorithm_2_17(plaintext: str) -> bytes:
     """Return the CQT 2.17 canonical UTF-8 byte stream for ``plaintext``."""
 
@@ -338,6 +389,13 @@ def algorithm_2_17(plaintext: str) -> bytes:
         raise CqtError(
             "unstable-protected-syntax",
             "normalization changes protected-content parsing on a second pass",
+        )
+    # Comparing bytes is not sufficient: normalization can invent a protected
+    # span that the first pass never protected, and the result still settles.
+    if _normalization_creates_protected_content(plaintext):
+        raise CqtError(
+            "unstable-protected-syntax",
+            "normalization creates protected content the original input did not contain",
         )
     return text.encode("utf-8")
 

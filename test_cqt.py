@@ -28,6 +28,10 @@ def test_golden_manifest():
     assert manifest["unicode_version"] == "17.0.0"
     ids = [case["id"] for case in manifest["cases"]]
     assert len(ids) == len(set(ids))
+    # Inputs must be unique too. Two ids for one input is a vector that looks
+    # like coverage and is not.
+    inputs = [case["input"] for case in manifest["cases"]]
+    assert len(inputs) == len(set(inputs))
     assert all(("output" in case) ^ ("error" in case) for case in manifest["cases"])
 
 

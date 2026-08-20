@@ -30,7 +30,7 @@ Error code | Condition
 `disallowed-bidi-control` | A scalar is one of `U+061C`, `U+200E`, `U+200F`, `U+202A`–`U+202E`, or `U+2066`–`U+2069`.
 `disallowed-control` | A scalar has General Category `Cc` and is not in the Unicode 17 `White_Space` set listed below.
 `unclosed-fence` | A recognized opening code fence has no valid closing fence.
-`unstable-protected-syntax` | The candidate output would parse or canonicalize differently on a second pass, including when normalization would create an unclosed fence.
+`unstable-protected-syntax` | The candidate output would parse or canonicalize differently on a second pass, or normalization creates protected content the input did not have. Either includes the case where normalization would create an unclosed fence.
 
 Validation applies inside protected content too. In particular, a bidi control is never made acceptable by placing it in code or a URL.
 
@@ -61,7 +61,7 @@ The protected span includes the opening and closing lines, the closing line endi
 
 A run of one or more backticks opens inline code when a later run of exactly the same length exists and is not part of a longer backtick run. The complete pair of delimiters and everything between them is protected.
 
-Backtick runs are maximal. An unmatched run of backticks is ordinary prose in its entirety, and scanning resumes after the whole run: no proper suffix of an unmatched run may open a span. In the example below the three-backtick run is unmatched, so it does not become a two-backtick run that pairs with the later one, and both space runs collapse as ordinary prose.
+Runs are maximal. An unmatched run is ordinary prose, and scanning resumes after the whole run; no shorter piece of it opens a span. Below, the run of three finds no partner, so it does not become a run of two that pairs with the later one, and both space runs collapse.
 
 ````text
 Input:  a  ```  ``
@@ -70,7 +70,7 @@ Output: a ``` ``
 
 ### HTTP(S) URL spans
 
-The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. Case-insensitivity is ASCII only: a scalar outside `A`–`Z` and `a`–`z` never matches a scheme character, so `U+017F LATIN SMALL LETTER LONG S` does not match `s`. [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3.1) restricts a scheme to ASCII letters, and an implementation whose case-insensitive comparison applies Unicode case folding will protect spans that are not URLs. Recognition is lexical; CQT does not validate the host, resolve the URL, or access the network.
+The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. The comparison is ASCII-only. A scalar outside `A`-`Z` and `a`-`z` never matches a scheme character, so `U+017F LATIN SMALL LETTER LONG S` does not match `s`; [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3.1) allows only ASCII letters in a scheme. An implementation that folds case the Unicode way instead will protect spans that are not URLs. Recognition is lexical; CQT does not validate the host, resolve the URL, or access the network.
 
 The protected span begins with the `h` and continues until the first:
 
@@ -78,7 +78,7 @@ The protected span begins with the `h` and continues until the first:
 - `<`, `>`, `"`, or backtick; or
 - unmatched closing parenthesis.
 
-There is deliberately no control-character terminator. Every General Category `Cc` scalar is either in the `White_Space` set above, and so already terminates the span, or is rejected as `disallowed-control` before recognition begins.
+No control character ends the span. Every `Cc` scalar is either in the `White_Space` set above, which already ends it, or rejected as `disallowed-control` before recognition starts.
 
 Parentheses within the URL are counted, so `https://example.test/Foo_(bar)` is one protected span. Other trailing punctuation is included rather than guessed to be prose, because it may legally belong to the URL. Percent encoding, Unicode spelling, scheme case, repeated hyphens, query ampersands, fragments, and allowed invisible format characters are all preserved exactly.
 
@@ -101,7 +101,7 @@ Remove these four layout-only characters from prose:
 
 Do not remove `U+200C ZERO WIDTH NON-JOINER` or `U+200D ZERO WIDTH JOINER`; they can be linguistically meaningful. Other accepted format and variation characters are preserved unless another rule explicitly transforms them.
 
-`U+200B` is also retained when the scalar immediately before it and the scalar immediately after it both have Unicode 17 `Line_Break` property value `SA`. Those are the scripts that do not separate words with spaces — Thai, Lao, Khmer, Myanmar, Tai Tham, New Tai Lue and Ahom — where `U+200B` is the word separator rather than a layout artifact, so removing it would merge words a reader of those scripts distinguishes. Requiring both neighbours to qualify keeps the ordinary case intact: a `U+200B` injected by a mailer or sanitizer at a script boundary, or anywhere in Latin, Cyrillic, Arabic, Devanagari or CJK text, is still removed. The complete set is:
+Keep `U+200B` when the scalar before it and the scalar after it both have Unicode 17 `Line_Break` value `SA`. Those scripts write without spaces between words and use `U+200B` to divide them, so removing it merges words their readers keep apart. Both neighbors must qualify. A `U+200B` dropped in by a mailer at a script boundary, or anywhere in Latin, Cyrillic, Arabic, Devanagari, or CJK text, still goes. The set covers Thai, Lao, Khmer, Myanmar, Tai Tham, New Tai Lue, and Ahom:
 
 ```text
 U+0E01..U+0E3A  U+0E40..U+0E4E  U+0E81..U+0E82  U+0E84  U+0E86..U+0E8A
@@ -136,13 +136,11 @@ Apply these transformations in order:
 5. Replace `U+2044 FRACTION SLASH` with `/`.
 6. Replace `U+0022`, `U+00AB`, `U+00BB`, `U+2018`, `U+2019`, `U+201C`, `U+201D`, `U+2039`, `U+203A`, and `U+3008`–`U+300D` with ASCII apostrophe `'` (`U+0027`).
 7. Apply the autocorrect tables below, longest source first when one source prefixes another.
-8. Attach punctuation to the side it binds to, by removing an ASCII space when either:
-    - the scalar immediately **after** it has Unicode 17 General Category `Pe` or `Pf`, or the Unicode 17 `Terminal_Punctuation` property — punctuation that closes or ends what precedes it, and so binds leftward; or
-    - the scalar immediately **before** it has General Category `Ps` or `Pi` — punctuation that opens what follows it, and so binds rightward.
+8. Remove an ASCII space if the scalar after it has General Category `Pe` or `Pf`, or has the Unicode 17 `Terminal_Punctuation` property. Also remove it if the scalar before it has General Category `Ps` or `Pi`. Punctuation that closes or ends a phrase binds to its left; punctuation that opens one binds to its right.
 
-    No space is removed on the other side of such a scalar, and none is removed around any other punctuation. `Pd` dashes, `Pc` connectors, the solidus, and the ASCII apostrophe therefore keep their spacing. The apostrophe needs no exception: `Terminal_Punctuation` does not include it, which matters because step 6 above has already folded every quote character onto it and destroyed the distinction between an opening and a closing quote.
+    No space is removed on the other side, or around any other punctuation, so `Pd` dashes, `Pc` connectors, the solidus, and the ASCII apostrophe keep their spacing. The apostrophe needs no exception of its own, because `Terminal_Punctuation` omits it; step 6 above has already folded every quote onto it and lost the difference between an opening and a closing one.
 
-    The `Terminal_Punctuation` members below ASCII 128 are exactly `!`, `,`, `.`, `:`, `;` and `?`. The complete Unicode 17 set is:
+    Below ASCII 128 the property holds exactly `!`, `,`, `.`, `:`, `;`, and `?`. The complete Unicode 17 set is:
 
     ```text
     U+0021  U+002C  U+002E  U+003A..U+003B  U+003F  U+037E  U+0387  U+0589
@@ -204,11 +202,11 @@ The punctuation-space rule follows these mappings so typographic and ASCII input
 
 Restore protected spans, then repeat protected-span recognition and prose canonicalization once on the candidate output. If the second result differs or raises a protected-syntax error, reject the original input with `unstable-protected-syntax`.
 
-Comparing the two results is not sufficient by itself, because normalization can invent protected content while the bytes still settle. Additionally: apply steps 1 and 2 alone to the prose, restore the protected spans, and recognize protected content again. If that recognition differs from the recognition performed on the original input, reject with `unstable-protected-syntax`.
+Comparing the two results is not enough, because normalization can invent protected content and still settle. Apply steps 1 and 2 alone to the prose, restore the spans, and recognize protected content again. If that recognition differs from the recognition on the original input, reject with `unstable-protected-syntax`.
 
-For example, `http<U+200B>://example.test/a--b` contains no URL, because the invisible breaks the literal scheme. The prose rules therefore collapse `--` to `-` inside what the reader sees as a link, and the result is a well-formed URL that was never protected. A byte comparison cannot see this, because a third pass would change nothing. The same applies when NFKC creates a delimiter: a fullwidth `ｈｔｔｐｓ：／／`, a long s, a mathematical letter, or `U+FF40 FULLWIDTH GRAVE ACCENT`, which becomes a backtick and can open a code span.
+`http<U+200B>://example.test/a--b` holds no URL; the invisible breaks the scheme. So the prose rules collapse `--` to `-` inside what the reader sees as a link, and the result is a URL that was never protected. A byte comparison misses it, because a third pass changes nothing. NFKC does the same whenever it builds a delimiter, out of a fullwidth `ｈｔｔｐｓ：／／`, a long s, a mathematical letter, or `U+FF40 FULLWIDTH GRAVE ACCENT`, which becomes a backtick.
 
-This test is deliberately confined to steps 1 and 2. A protected span may legitimately grow during step 4, because removing a space next to punctuation joins that punctuation to a preceding URL. `see https://example.test/a , then`, the French `voir https://example.test/a !`, and the Devanagari, Arabic and CJK sentence endings all rely on this, and none of them alters anything inside the link. Only normalization that *creates* protected content is unstable.
+The test covers steps 1 and 2 only. A span may grow in step 4, where removing a space next to punctuation joins it to a preceding URL. `see https://example.test/a , then` depends on that, as do the French `voir https://example.test/a !` and sentence endings in Devanagari, Arabic, and CJK. Nothing inside the link changes there. Only normalization that creates protected content is unstable.
 
 Encode a stable result as UTF-8 without a byte-order mark. These bytes are the CQT 2.17 output.
 

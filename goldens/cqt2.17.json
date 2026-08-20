@@ -1,0 +1,192 @@
+{
+  "algorithm": "cqt2.17",
+  "unicode_version": "17.0.0",
+  "encoding": "UTF-8",
+  "cases": [
+    {
+      "id": "identity-ascii",
+      "input": "hello world",
+      "output": "hello world"
+    },
+    {
+      "id": "empty",
+      "input": "",
+      "output": ""
+    },
+    {
+      "id": "nfkc-compatibility",
+      "input": "ℌℍ ①ｶ︷︸⁹₉㌀¼ǆ",
+      "output": "HH 1カ{}99アパート1/4dž"
+    },
+    {
+      "id": "unicode-17-nfkc",
+      "input": "꟱",
+      "output": "S"
+    },
+    {
+      "id": "whitespace-and-line-loss",
+      "input": "  one\r\n\t two  three  ",
+      "output": "one two three"
+    },
+    {
+      "id": "ampersand-spacing",
+      "input": "A&B / A & B / A  ＆  B / AT&T",
+      "output": "A & B/A & B/A & B/AT & T"
+    },
+    {
+      "id": "dash-and-ellipsis",
+      "input": "one——two----three……....",
+      "output": "one-two-three..."
+    },
+    {
+      "id": "punctuation-spacing-fixed-point",
+      "input": "a- -b . . . .",
+      "output": "a-b..."
+    },
+    {
+      "id": "unicode-17-dashes",
+      "input": "a𐵮b𐺭c",
+      "output": "a-b-c"
+    },
+    {
+      "id": "quotes-cjk-and-fraction",
+      "input": "“one” 、 《two》 。 1⁄2",
+      "output": "'one','two'.1/2"
+    },
+    {
+      "id": "remove-layout-invisibles",
+      "input": "soft­hyphen zero​width word⁠join bom﻿here",
+      "output": "softhyphen zerowidth wordjoin bomhere"
+    },
+    {
+      "id": "preserve-join-controls",
+      "input": "a‌b a‍b",
+      "output": "a‌b a‍b"
+    },
+    {
+      "id": "autocorrect-emoji-and-emoticons",
+      "input": "😊 :) :-) 😐 :| :-| ☹️ :( :-( 😃 :D :-D 😝 :p :-p 😲 :o :-o 😉 ;) ;-) ❤️ <3 💔 </3",
+      "output": ":-):-):-):-|:-|:-|:-(:-(:-(:-D:-D:-D:-p:-p:-p:-o:-o:-o;-);-);-)<3 <3 </3 </3"
+    },
+    {
+      "id": "autocorrect-symbols-and-bullet",
+      "input": "© (c) ® (R) • *",
+      "output": "(c)(c)(R)(R)**"
+    },
+    {
+      "id": "autocorrect-punctuation-fixed-point",
+      "input": ": ©",
+      "output": ":-(c)"
+    },
+    {
+      "id": "fenced-code-language-is-opaque",
+      "input": "Before\n```python\nx = 'A  &  B--C'\r\n```\nAfter",
+      "output": "Before\n```python\nx = 'A  &  B--C'\r\n```\nAfter"
+    },
+    {
+      "id": "fenced-code-invisibles-are-opaque",
+      "input": "```text\na​b﻿c\n```",
+      "output": "```text\na​b﻿c\n```"
+    },
+    {
+      "id": "long-fence-is-opaque",
+      "input": "````text\ninside ``` remains data\n````",
+      "output": "````text\ninside ``` remains data\n````"
+    },
+    {
+      "id": "consecutive-fences-share-one-boundary-line-ending",
+      "input": "```\none\n```\n```\ntwo\n```",
+      "output": "```\none\n```\n```\ntwo\n```"
+    },
+    {
+      "id": "unicode-separators-do-not-form-fence-lines",
+      "input": "```text inside ````",
+      "output": "```text inside ````"
+    },
+    {
+      "id": "inline-code-is-opaque",
+      "input": "Use `A  &  B--C` here and ``a ` b`` there.",
+      "output": "Use `A  &  B--C` here and ``a ` b`` there."
+    },
+    {
+      "id": "inline-code-unmatched-is-prose",
+      "input": "An unmatched ` mark & value",
+      "output": "An unmatched ` mark & value"
+    },
+    {
+      "id": "url-query-is-opaque",
+      "input": "Visit https://example.test/a--b?q=x&lang=en now.",
+      "output": "Visit https://example.test/a--b?q=x&lang=en now."
+    },
+    {
+      "id": "url-balanced-parentheses",
+      "input": "See https://example.test/Foo_(bar).",
+      "output": "See https://example.test/Foo_(bar)."
+    },
+    {
+      "id": "markdown-link-url-is-opaque",
+      "input": "Read [the docs](https://example.test/a--b?x=1&y=2).",
+      "output": "Read[the docs](https://example.test/a--b?x=1&y=2)."
+    },
+    {
+      "id": "url-unicode-is-opaque",
+      "input": "https://example.test/ℌ/Ａ＆Ｂ",
+      "output": "https://example.test/ℌ/Ａ＆Ｂ"
+    },
+    {
+      "id": "url-scheme-case-and-terminal-punctuation-are-opaque",
+      "input": "HTTPS://example.test/a--b....",
+      "output": "HTTPS://example.test/a--b...."
+    },
+    {
+      "id": "url-unmatched-closing-parenthesis-ends-span",
+      "input": "(https://example.test/a--b) & more",
+      "output": "(https://example.test/a--b) & more"
+    },
+    {
+      "id": "url-invisibles-are-opaque",
+      "input": "https://example.test/a​b﻿c",
+      "output": "https://example.test/a​b﻿c"
+    },
+    {
+      "id": "reject-bidi-in-prose",
+      "input": "safe‮not safe‬",
+      "error": "disallowed-bidi-control"
+    },
+    {
+      "id": "reject-unassigned-code-point",
+      "input": "assigned͸unassigned",
+      "error": "unassigned-code-point"
+    },
+    {
+      "id": "reject-noncharacter",
+      "input": "before﷐after",
+      "error": "unassigned-code-point"
+    },
+    {
+      "id": "reject-non-whitespace-control",
+      "input": "before\u0000after",
+      "error": "disallowed-control"
+    },
+    {
+      "id": "reject-bidi-in-fence",
+      "input": "```text\nsafe‮not safe‬\n```",
+      "error": "disallowed-bidi-control"
+    },
+    {
+      "id": "reject-bidi-in-url",
+      "input": "https://example.test/safe‮not-safe‬",
+      "error": "disallowed-bidi-control"
+    },
+    {
+      "id": "reject-unclosed-fence",
+      "input": "before\n```python\nprint('oops')",
+      "error": "unclosed-fence"
+    },
+    {
+      "id": "reject-unstable-protected-syntax",
+      "input": "`­`­`",
+      "error": "unstable-protected-syntax"
+    }
+  ]
+}

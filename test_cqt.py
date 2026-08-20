@@ -1,61 +1,88 @@
-from cqt import *
+import json
+from pathlib import Path
 
-def test_hello():
-    assert algorithm_1_14("hello") == b"hello"
+import pytest
 
-def test_empty():
-    assert algorithm_1_14("") == b""
+import unicodedata2 as unicodedata
 
-def test_nkfc():
-    assert algorithm_1_14("\uFEC9\uFECA\uFECB\uFECC") == b'\xd8\xb9\xd8\xb9\xd8\xb9\xd8\xb9'
-    x = algorithm_1_14("ℌℍ\u00a0①ｶ︷︸⁹₉㌀¼ǆ")
-    print(x)
-    y = "HH 1カ{}99アパート1/4dž".encode("UTF-8")
-    assert x == y
+from cqt import CqtError, DASH_PUNCTUATION, algorithm_2_17
 
-def test_leading_and_trailing_whitespace():
-    assert algorithm_1_14(" abc  ") == b"abc"
-    assert algorithm_1_14("\n abc\n\t  ") == b"abc"
-    assert algorithm_1_14("\r abc\n\t  \n") == b"abc"
-    assert algorithm_1_14("\u3000\u00a0abc\ufeff\u200b") == b"abc"
 
-def test_trailing_whitespace_on_lines():
-    assert algorithm_1_14("line1 \nline2") == b"line1 line2"
+GOLDENS_PATH = Path(__file__).parent / "goldens" / "cqt2.17.json"
 
-def test_redundant_linebreaks():
-    assert algorithm_1_14("line1\n\nline2") == b"line1 line2"
 
-def test_redundant_linebreaks_with_trailing_whitespace():
-    assert algorithm_1_14("line1 \n \nline2") == b"line1 line2"
+def load_goldens():
+    return json.loads(GOLDENS_PATH.read_text(encoding="utf-8"))
 
-def test_cr_to_space():
-    assert algorithm_1_14("line1\rline2") == b"line1 line2"
 
-def test_2028_to_space():
-    assert algorithm_1_14("line1\u2028\tline2") == b"line1 line2"
+def test_golden_manifest():
+    manifest = load_goldens()
+    assert manifest["algorithm"] == "cqt2.17"
+    assert manifest["unicode_version"] == "17.0.0"
+    ids = [case["id"] for case in manifest["cases"]]
+    assert len(ids) == len(set(ids))
+    assert all(("output" in case) ^ ("error" in case) for case in manifest["cases"])
 
-def test_2029_to_space():
-    assert algorithm_1_14("line1\t\u2029\rline2") == b"line1 line2"
 
-def test_crlf_to_space():
-    assert algorithm_1_14("line1\r\nline2") == b"line1 line2"
+@pytest.mark.parametrize("case", load_goldens()["cases"], ids=lambda case: case["id"])
+def test_normative_golden(case):
+    if "output" in case:
+        assert algorithm_2_17(case["input"]) == case["output"].encode("utf-8")
+    else:
+        with pytest.raises(CqtError) as exc:
+            algorithm_2_17(case["input"])
+        assert exc.value.code == case["error"]
 
-def test_other_spaces():
-    for x in '\u200B\ufeff\u00a0\u3000':
-        assert algorithm_1_14('a' + x + 'b') == b"a b"
 
-def test_squeeze():
-    assert algorithm_1_14(("this  is  a \n\t\r   test")) == b"this is a test"
+@pytest.mark.parametrize(
+    "control",
+    [
+        "\u061c",
+        "\u200e",
+        "\u200f",
+        "\u202a",
+        "\u202b",
+        "\u202c",
+        "\u202d",
+        "\u202e",
+        "\u2066",
+        "\u2067",
+        "\u2068",
+        "\u2069",
+    ],
+)
+def test_every_unicode_17_bidi_control_is_rejected(control):
+    with pytest.raises(CqtError) as exc:
+        algorithm_2_17(f"left{control}right")
+    assert exc.value.code == "disallowed-bidi-control"
 
-def test_ideographic_punct():
-    assert algorithm_1_14("\u3001\u3000\u3002\u3008") == b",.'"
 
-def test_ideographic_ascii():
-    assert algorithm_1_14("\uFF01\uFF02\uFF25\uFF37\uFF56") == b"!'EWv"
+def test_non_scalar_input_is_rejected():
+    with pytest.raises(CqtError) as exc:
+        algorithm_2_17("left\ud800right")
+    assert exc.value.code == "invalid-unicode-scalar"
 
-def test_hyphens():
-    assert algorithm_1_14("\u2010\u2011\u2012\u2013\u2014\u2015") == b"-"
 
-def test_space_before_trailing_qmark():
-    assert algorithm_1_14("hello ?") == b"hello?"
+def test_non_string_input_is_rejected():
+    with pytest.raises(TypeError):
+        algorithm_2_17(b"not text")
 
+
+def test_explicit_dash_set_is_complete_for_unicode_17():
+    actual = {chr(codepoint) for codepoint in range(0x110000) if unicodedata.category(chr(codepoint)) == "Pd"}
+    assert DASH_PUNCTUATION == actual
+
+
+def test_many_protected_spans_restore_in_order():
+    urls = [f"https://example.test/{i}--value?a=1&b=2" for i in range(1000)]
+    plaintext = " ".join(urls)
+    assert algorithm_2_17(plaintext) == plaintext.encode("utf-8")
+
+
+@pytest.mark.parametrize("case", load_goldens()["cases"], ids=lambda case: case["id"])
+def test_successful_goldens_are_idempotent(case):
+    if "output" not in case:
+        pytest.skip("error vector")
+    once = algorithm_2_17(case["input"])
+    twice = algorithm_2_17(once.decode("utf-8"))
+    assert twice == once

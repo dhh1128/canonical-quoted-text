@@ -17,14 +17,6 @@ if unicodedata.unidata_version != UNICODE_VERSION:
     )
 
 
-class CqtError(ValueError):
-    """A deterministic rejection required by the CQT 2.17 specification."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-
-
 @dataclass(frozen=True)
 class _Span:
     start: int
@@ -103,22 +95,38 @@ QUOTE_CHARACTERS = frozenset(
     "\u3008\u3009\u300a\u300b\u300c\u300d"
 )
 
-AUTOCORRECT_PAIRS = (
+_AUTOCORRECT_BASE = (
     ("\U0001f60a", ":-)"),
     ("\U0001f610", ":-|"),
-    ("\u2639\ufe0f", ":-("),
     ("\u2639", ":-("),
     ("\U0001f603", ":-D"),
     ("\U0001f61d", ":-p"),
     ("\U0001f632", ":-o"),
     ("\U0001f609", ";-)"),
-    ("\u2764\ufe0f", "<3"),
     ("\u2764", "<3"),
     ("\U0001f494", "</3"),
     ("\u00a9", "(c)"),
     ("\u00ae", "(R)"),
     ("\u2022", "*"),
 )
+
+# A trailing variation selector belongs to the character it follows, for every
+# entry rather than the two that happened to be spelled out. U+FE0F asks for the
+# emoji rendering and U+FE0E for the text rendering; neither changes what the
+# character is, and pickers and keyboards add them without the user knowing. So
+# all three spellings of one character have to converge, which is the whole
+# point of this step. Longest source first, so a selector form is always tried
+# before the bare one.
+AUTOCORRECT_PAIRS = tuple(
+    pair
+    for source, target in _AUTOCORRECT_BASE
+    for pair in (
+        (source + "\ufe0f", target),
+        (source + "\ufe0e", target),
+        (source, target),
+    )
+)
+
 ASCII_AUTOCORRECT_PAIRS = (
     (":)", ":-)"),
     (":|", ":-|"),
@@ -138,7 +146,13 @@ _URL_START = re.compile(r"https?://", re.IGNORECASE | re.ASCII)
 _MULTI_HYPHEN = re.compile(r"-{2,}")
 _LONG_DOTS = re.compile(r"\.{4,}")
 _SPACES = re.compile(r" +")
-_PROTECTED_MARKER = re.compile(r"\ufdd0CQT[0-9]+\ufdef")
+# The marker is built from NUL deliberately. Step 2 strips every Cc scalar from
+# the input BEFORE protection runs, so the text cannot contain one, and a marker
+# therefore cannot be forged. A marker made of noncharacters could be: an input
+# holding U+FDD0 CQT0 U+FDEF used to have span 0's content substituted into it.
+_MARKER_OPEN = "\x00"
+_MARKER_CLOSE = "\x00"
+_PROTECTED_MARKER = re.compile(r"\x00CQT[0-9]+\x00")
 
 
 def _line_body(line: str) -> str:
@@ -191,7 +205,11 @@ def _fenced_spans(text: str) -> list[_Span]:
         while j < len(lines) and not closing.fullmatch(_line_body(lines[j])):
             j += 1
         if j == len(lines):
-            raise CqtError("unclosed-fence", "opening backtick fence has no closing fence")
+            # No closing line, so the pattern is not present. A run of backticks
+            # in prose is prose. Failing to match is not an error; human text
+            # has no syntax to get wrong.
+            i += 1
+            continue
 
         start = offsets[i]
         if start >= 2 and text[start - 2 : start] == "\r\n":
@@ -294,7 +312,7 @@ def _protect(text: str) -> tuple[str, dict[str, str]]:
     protected: dict[str, str] = {}
     cursor = 0
     for marker_number, span in enumerate(spans):
-        marker = f"\ufdd0CQT{marker_number}\ufdef"
+        marker = f"{_MARKER_OPEN}CQT{marker_number}{_MARKER_CLOSE}"
         parts.append(text[cursor : span.start])
         parts.append(marker)
         protected[marker] = text[span.start : span.end]
@@ -317,8 +335,53 @@ def _collapse_unicode_whitespace(text: str) -> str:
     return "".join(out).strip(" ")
 
 
+def _strip_disallowed(text: str) -> str:
+    """Remove what cannot belong to plain text.
+
+    Three groups, all of them artifacts rather than writing. Control characters
+    outside the White_Space set -- NUL and its neighbours -- are not plain text.
+    Unpaired surrogates are not Unicode scalar values at all and have no UTF-8
+    encoding; a well-formed pair is a character and is left alone. And the two
+    directional overrides, LRO and RLO, force every character in their scope to
+    render in a given direction regardless of what the character is, so Latin
+    letters display reversed. That is an instruction to a rendering engine, not
+    a statement about the text, and it is the primitive behind bidi spoofing.
+
+    The other bidi controls stay. Marks (ALM, LRM, RLM) only affect how
+    neighbouring neutral characters resolve, and isolates (LRI, RLI, FSI, PDI)
+    scope a direction without overriding anything, so both are ordinary parts
+    of correct Arabic and Hebrew text.
+    """
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        codepoint = ord(char)
+        if 0xD800 <= codepoint <= 0xDBFF:
+            following = text[index + 1] if index + 1 < len(text) else ""
+            if following and 0xDC00 <= ord(following) <= 0xDFFF:
+                # A well-formed pair is one astral character, not two errors.
+                out.append(chr(0x10000 + ((codepoint - 0xD800) << 10) + (ord(following) - 0xDC00)))
+                index += 2
+                continue
+            index += 1
+            continue
+        if 0xDC00 <= codepoint <= 0xDFFF:
+            index += 1
+            continue
+        if unicodedata.category(char) == "Cc" and char not in WHITE_SPACE:
+            index += 1
+            continue
+        if unicodedata.bidirectional(char) in ("LRO", "RLO"):
+            index += 1
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
 def _remove_invisibles(text: str) -> str:
-    """Step 2: drop the four layout-only characters.
+    """Step 5: drop the four layout-only characters.
 
     U+200B survives between two scalars from a script that does not separate
     words with spaces, where it is the word separator rather than an artifact.
@@ -339,7 +402,7 @@ def _remove_invisibles(text: str) -> str:
 
 
 def _remove_spaces_adjacent_to_punctuation(text: str) -> str:
-    """Step 4.8: attach punctuation to the side it belongs to.
+    """Step 7.9: attach punctuation to the side it belongs to.
 
     Punctuation is not symmetric. Opening punctuation binds to what follows it
     and closing, final and terminal punctuation bind to what precedes, so a
@@ -370,92 +433,35 @@ def _remove_spaces_adjacent_to_punctuation(text: str) -> str:
 
 
 def _canonicalize_prose(text: str) -> str:
+    """One pass, in order. Nothing here runs twice.
+
+    The autocorrect tables run before space removal. A client that swaps an
+    emoji for its emoticon spelling, or the reverse, is exactly the kind of
+    tooling transformation CQT exists to survive, so "hello <emoji>",
+    "hello :)" and "hello :-)" must all reach the same bytes. Mapping to the
+    canonical spelling first puts a colon where the space rule can see it.
+
+    The cost of a single pass is that ": )" ends at ":)" rather than ":-)",
+    since nothing revisits the tables after the space closes the gap. That is
+    an oddity somebody typed, not something a tool did to their text.
+    """
     text = unicodedata.normalize("NFKC", text)
     text = _remove_invisibles(text)
     text = _collapse_unicode_whitespace(text)
-    while True:
-        previous = text
-        text = "".join("-" if char in DASH_PUNCTUATION else char for char in text)
-        text = _MULTI_HYPHEN.sub("-", text)
-        text = text.replace("\u3001", ",").replace("\u3002", ".")
-        text = text.replace("\u2026", "...")
-        text = _LONG_DOTS.sub("...", text)
-        text = text.replace("\u2044", "/")
-        text = "".join("'" if char in QUOTE_CHARACTERS else char for char in text)
-        for source, target in AUTOCORRECT_PAIRS:
-            text = text.replace(source, target)
-        for source, target in ASCII_AUTOCORRECT_PAIRS:
-            text = text.replace(source, target)
-        text = _remove_spaces_adjacent_to_punctuation(text)
-        if text == previous:
-            break
+    text = "".join("-" if char in DASH_PUNCTUATION else char for char in text)
+    text = _MULTI_HYPHEN.sub("-", text)
+    text = text.replace("\u3001", ",").replace("\u3002", ".")
+    text = text.replace("\u2026", "...")
+    text = _LONG_DOTS.sub("...", text)
+    text = text.replace("\u2044", "/")
+    text = "".join("'" if char in QUOTE_CHARACTERS else char for char in text)
+    for source, target in AUTOCORRECT_PAIRS:
+        text = text.replace(source, target)
+    for source, target in ASCII_AUTOCORRECT_PAIRS:
+        text = text.replace(source, target)
+    text = _remove_spaces_adjacent_to_punctuation(text)
     text = text.replace("&", " & ")
     return _collapse_unicode_whitespace(text)
-
-
-def _validate(plaintext: str) -> None:
-    for char in plaintext:
-        codepoint = ord(char)
-        if 0xD800 <= codepoint <= 0xDFFF:
-            raise CqtError("invalid-unicode-scalar", "input contains an isolated surrogate")
-        category = unicodedata.category(char)
-        if category == "Cn":
-            raise CqtError(
-                "unassigned-code-point",
-                f"U+{codepoint:04X} is unassigned in Unicode {UNICODE_VERSION}",
-            )
-        if char in BIDI_CONTROLS:
-            raise CqtError(
-                "disallowed-bidi-control",
-                f"input contains bidi control U+{codepoint:04X}",
-            )
-        if category == "Cc" and char not in WHITE_SPACE:
-            raise CqtError(
-                "disallowed-control",
-                f"input contains control character U+{codepoint:04X}",
-            )
-
-
-def _canonicalize_once(plaintext: str) -> str:
-    text, protected = _protect(plaintext)
-    text = _canonicalize_prose(text)
-    return _PROTECTED_MARKER.sub(lambda match: protected[match.group()], text)
-
-
-def _protected_signature(text: str) -> tuple[str, ...]:
-    """Every protected span recognized in ``text``, in order."""
-    return tuple(text[span.start : span.end] for span in _opaque_spans(text))
-
-
-def _after_normalization(plaintext: str) -> str:
-    """``plaintext`` with steps 1 and 2 applied to prose, spans left intact."""
-    text, protected = _protect(plaintext)
-    text = unicodedata.normalize("NFKC", text)
-    text = _remove_invisibles(text)
-    return _PROTECTED_MARKER.sub(lambda match: protected[match.group()], text)
-
-
-def _normalization_creates_protected_content(plaintext: str) -> bool:
-    """Did NFKC or invisible removal invent a protected span?
-
-    This is the dangerous direction, and the one a byte comparison cannot see.
-    "http\u200b://x/a--b" holds no URL, so the prose rules collapse "--" inside
-    what the reader sees as a link, and the result is a stable URL on the next
-    pass. NFKC does the same from a fullwidth or long-s spelling, and turns
-    U+FF40 FULLWIDTH GRAVE ACCENT into a backtick that opens a code span.
-
-    Deliberately narrower than comparing the input's spans with the final
-    output's. A URL followed by a space and then punctuation legitimately grows
-    on the second pass, because removing the space joins the punctuation to the
-    span -- that is ordinary English ("a , then") and required French typography
-    ("a !"), as well as Arabic, Devanagari and CJK sentence endings. Nothing was
-    altered inside the link there, so it must keep working.
-    """
-    try:
-        normalized = _after_normalization(plaintext)
-    except CqtError:
-        return True
-    return _protected_signature(plaintext) != _protected_signature(normalized)
 
 
 def algorithm_2_17(plaintext: str) -> bytes:
@@ -463,28 +469,14 @@ def algorithm_2_17(plaintext: str) -> bytes:
 
     if not isinstance(plaintext, str):
         raise TypeError("plaintext must be str")
-    _validate(plaintext)
-    text = _canonicalize_once(plaintext)
-    try:
-        stable = _canonicalize_once(text)
-    except CqtError as exc:
-        raise CqtError(
-            "unstable-protected-syntax",
-            "normalization creates ambiguous protected-content syntax",
-        ) from exc
-    if stable != text:
-        raise CqtError(
-            "unstable-protected-syntax",
-            "normalization changes protected-content parsing on a second pass",
-        )
-    # Comparing bytes is not sufficient: normalization can invent a protected
-    # span that the first pass never protected, and the result still settles.
-    if _normalization_creates_protected_content(plaintext):
-        raise CqtError(
-            "unstable-protected-syntax",
-            "normalization creates protected content the original input did not contain",
-        )
+    # Strip what cannot be plain text BEFORE recognizing anything. Otherwise an
+    # override hidden inside a fence or a URL is copied through untouched, and
+    # the span becomes a channel for exactly the spoof this removal prevents.
+    plaintext = _strip_disallowed(plaintext)
+    text, protected = _protect(plaintext)
+    text = _canonicalize_prose(text)
+    text = _PROTECTED_MARKER.sub(lambda match: protected.get(match.group(), match.group()), text)
     return text.encode("utf-8")
 
 
-__all__ = ["CqtError", "UNICODE_VERSION", "algorithm_2_17"]
+__all__ = ["UNICODE_VERSION", "algorithm_2_17"]

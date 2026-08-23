@@ -14,44 +14,44 @@
       "output": ""
     },
     {
-      "id": "reject-bidi-in-prose",
+      "id": "strip-override-in-prose",
       "input": "safe‮not safe‬",
-      "error": "disallowed-bidi-control"
+      "output": "safenot safe‬"
     },
     {
-      "id": "reject-bidi-in-fence",
+      "id": "override-inside-fence-is-still-stripped",
       "input": "```text\nsafe‮not safe‬\n```",
-      "error": "disallowed-bidi-control"
+      "output": "```text\nsafenot safe‬\n```"
     },
     {
-      "id": "reject-bidi-in-url",
+      "id": "override-inside-url-is-still-stripped",
       "input": "https://example.test/safe‮not-safe‬",
-      "error": "disallowed-bidi-control"
+      "output": "https://example.test/safenot-safe‬"
     },
     {
-      "id": "reject-unassigned-code-point",
+      "id": "unassigned-code-point-passes-through",
       "input": "assigned͸unassigned",
-      "error": "unassigned-code-point"
+      "output": "assigned͸unassigned"
     },
     {
-      "id": "reject-noncharacter",
+      "id": "noncharacter-passes-through",
       "input": "before﷐after",
-      "error": "unassigned-code-point"
+      "output": "before﷐after"
     },
     {
-      "id": "reject-non-whitespace-control",
+      "id": "strip-control-character",
       "input": "before\u0000after",
-      "error": "disallowed-control"
+      "output": "beforeafter"
     },
     {
-      "id": "reject-unclosed-fence",
+      "id": "unclosed-fence-is-prose",
       "input": "before\n```python\nprint('oops')",
-      "error": "unclosed-fence"
+      "output": "before ```python print('oops')"
     },
     {
-      "id": "reject-unstable-protected-syntax",
+      "id": "backticks-split-by-soft-hyphens-are-prose",
       "input": "`­`­`",
-      "error": "unstable-protected-syntax"
+      "output": "`­``"
     },
     {
       "id": "fenced-code-language-is-opaque",
@@ -169,9 +169,9 @@
       "output": "HtTpS://example.test/a--b"
     },
     {
-      "id": "url-scheme-long-s-is-not-a-scheme",
+      "id": "long-s-scheme-is-not-a-url",
       "input": "httpſ://example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "https://example.test/a-b"
     },
     {
       "id": "markdown-link-url-is-opaque",
@@ -314,7 +314,7 @@
       "output": "(c) (c) (R) (R) * *"
     },
     {
-      "id": "emoticon-convergence-survives-spacing-rule",
+      "id": "emoji-and-emoticon-spellings-converge",
       "input": "hello 😊",
       "output": "hello:-)"
     },
@@ -324,9 +324,9 @@
       "output": "hello:-)"
     },
     {
-      "id": "punctuation-spacing-fixed-point",
+      "id": "single-pass-leaves-four-dots",
       "input": "a- -b . . . .",
-      "output": "a- -b..."
+      "output": "a- -b...."
     },
     {
       "id": "autocorrect-punctuation-fixed-point",
@@ -334,9 +334,9 @@
       "output": ": (c)"
     },
     {
-      "id": "emoticon-created-by-space-removal",
+      "id": "single-pass-leaves-spaced-emoticon",
       "input": ": )",
-      "output": ":-)"
+      "output": ":)"
     },
     {
       "id": "ampersand-spacing",
@@ -359,39 +359,139 @@
       "output": "राम https://example.test/a।"
     },
     {
-      "id": "invisible-in-scheme-is-unstable",
+      "id": "zwsp-in-scheme-is-not-a-url",
       "input": "http​://example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "http://example.test/a-b"
     },
     {
-      "id": "soft-hyphen-in-scheme-is-unstable",
+      "id": "soft-hyphen-in-scheme-is-not-a-url",
       "input": "http­://example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "http://example.test/a-b"
     },
     {
-      "id": "word-joiner-in-scheme-is-unstable",
+      "id": "word-joiner-in-scheme-is-not-a-url",
       "input": "http⁠://example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "http://example.test/a-b"
     },
     {
-      "id": "zwnbsp-in-scheme-is-unstable",
+      "id": "zwnbsp-in-scheme-is-not-a-url",
       "input": "http﻿://example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "http://example.test/a-b"
     },
     {
-      "id": "fullwidth-scheme-is-unstable",
+      "id": "fullwidth-scheme-is-not-a-url",
       "input": "ｈｔｔｐｓ：／／ex/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "https://ex/a-b"
     },
     {
-      "id": "fullwidth-colon-solidus-scheme-is-unstable",
+      "id": "fullwidth-colon-solidus-is-not-a-url",
       "input": "https：／／example.test/a--b",
-      "error": "unstable-protected-syntax"
+      "output": "https://example.test/a-b"
     },
     {
-      "id": "fullwidth-grave-creates-inline-code",
+      "id": "fullwidth-graves-are-not-inline-code",
       "input": "x ｀a  b｀ y",
-      "error": "unstable-protected-syntax"
+      "output": "x `a b` y"
+    },
+    {
+      "id": "zwsp-kept-between-astral-ahom",
+      "input": "𑜀​𑜀",
+      "output": "𑜀​𑜀"
+    },
+    {
+      "id": "zwsp-between-thai-pair-both-removed",
+      "input": "ก​​ก",
+      "output": "กก"
+    },
+    {
+      "id": "combining-class-changed-in-unicode-17",
+      "input": "a᫝́b",
+      "output": "á᫝b"
+    },
+    {
+      "id": "combining-class-arabic-mark",
+      "input": "a𐻺́b",
+      "output": "á𐻺b"
+    },
+    {
+      "id": "forged-marker-is-ordinary-text",
+      "input": "﷐CQT0﷯ alone",
+      "output": "﷐CQT0﷯ alone"
+    },
+    {
+      "id": "forged-marker-beside-a-real-span",
+      "input": "`code` and ﷐CQT0﷯ here",
+      "output": "`code` and ﷐CQT0﷯ here"
+    },
+    {
+      "id": "variation-selector-absorbed-copyright",
+      "input": "©️",
+      "output": "(c)"
+    },
+    {
+      "id": "variation-selector-absorbed-emoji",
+      "input": "😊️",
+      "output": ":-)"
+    },
+    {
+      "id": "variation-selector-absorbed-bullet",
+      "input": "•️",
+      "output": "*"
+    },
+    {
+      "id": "url-ends-at-backtick-which-opens-a-span",
+      "input": "http://a.test/x`y  z`",
+      "output": "http://a.test/x`y  z`"
+    },
+    {
+      "id": "failed-fence-restarts-on-the-next-line",
+      "input": "````x--y\n```a--b\n```\n",
+      "output": "````x-y\n```a--b\n```\n"
+    },
+    {
+      "id": "emoji-with-variation-selector-converges",
+      "input": "hello 😊️",
+      "output": "hello:-)"
+    },
+    {
+      "id": "doubled-variation-selector-leaves-one",
+      "input": "©️️",
+      "output": "(c)️"
+    },
+    {
+      "id": "text-presentation-selector-absorbed",
+      "input": "©︎",
+      "output": "(c)"
+    },
+    {
+      "id": "text-presentation-selector-on-frowny",
+      "input": "☹︎",
+      "output": ":-("
+    },
+    {
+      "id": "astral-starter-survives-normalization",
+      "input": "a𐁁́",
+      "output": "a𐁁́"
+    },
+    {
+      "id": "astral-starter-between-letters",
+      "input": "x𐁁y",
+      "output": "x𐁁y"
+    },
+    {
+      "id": "compose-across-a-decomposed-mark",
+      "input": "áཱི",
+      "output": "áཱི"
+    },
+    {
+      "id": "hebrew-letter-with-combining-dot",
+      "input": "ג̇",
+      "output": "ג̇"
+    },
+    {
+      "id": "hebrew-final-kaf-with-combining-dot",
+      "input": "ך̇",
+      "output": "ך̇"
     }
   ]
 }

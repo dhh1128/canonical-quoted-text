@@ -283,7 +283,7 @@ The `U+200B` between two Thai characters survives, because Thai divides words wi
 
 The algorithm in this document and the vectors in [goldens/cqt2.17.json](goldens/cqt2.17.json) are normative. An implementation MUST implement the complete algorithm and MUST produce, byte-for-byte, the output that every vector specifies. Where a vector and this prose disagree, the vector controls, and the disagreement is a defect in this document that MUST be reported rather than generalized to other inputs.
 
-The Python implementation in [cqt.py](cqt.py) is a reference, not a source of normative behavior.
+The Python implementation in [impl/python/cqt.py](impl/python/cqt.py) is a reference, not a source of normative behavior.
 
 CQT 1.14 is a different and incompatible algorithm. Hashes and signatures identified as `cqt1.14` remain historical data and MUST NOT be recomputed or relabeled as `cqt2.17`.
 

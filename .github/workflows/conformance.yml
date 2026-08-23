@@ -9,9 +9,14 @@ on:
 permissions:
   contents: read
 
+# Every job runs the same normative vectors in goldens/cqt2.17.json against one
+# implementation. An implementation is conformant exactly insofar as its job is
+# green. The ports in this repository drifted to CQT 1.14 and stayed there
+# unnoticed for a long time, because nothing ever built them.
+
 jobs:
   python:
-    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    name: python / ${{ matrix.os }} / ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,5 +29,83 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: python -m pip install -e '.[test]'
+      - run: python -m pip install -e './impl/python[test]'
       - run: python -m pytest -q
+        working-directory: impl/python
+
+  javascript:
+    name: javascript / node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 24 is the floor: the vectors require Unicode 17, which means
+        # ICU 78 or newer. unicode-17-nfkc fails on anything older.
+        node-version: ["24", "26"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: report the runtime's Unicode version
+        run: node -p "'ICU ' + process.versions.icu + ' / Unicode ' + process.versions.unicode"
+      - run: node conformance.mjs
+        working-directory: impl/js
+
+  go:
+    name: go / ${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.27 is the floor: x/text ships its Unicode 17 tables behind a
+        # go1.27 build tag, and cqt.go panics at init on anything older.
+        go-version: ["1.27"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: impl/go/go.sum
+      - run: go test -count=1 ./...
+        working-directory: impl/go
+
+  rust:
+    name: rust / stable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install stable --profile minimal --no-self-update
+      - run: cargo test --locked
+        working-directory: impl/rust
+
+  java:
+    name: java / ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["21", "25"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+      # Single-file source launch; the port carries its own vector runner and
+      # has no dependencies, so there is no build system to configure.
+      - run: java Cqt.java
+        working-directory: impl/java
+
+  swift:
+    name: swift / ${{ matrix.swift-version }}
+    runs-on: ubuntu-latest
+    container: swift:${{ matrix.swift-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        swift-version: ["6.1"]
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift test
+        working-directory: impl/swift

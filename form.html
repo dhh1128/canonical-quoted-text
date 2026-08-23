@@ -3,7 +3,7 @@ layout: default
 title: Interactive CQT Tool
 ---
 
-<script src="cqt.js"></script>
+<script src="impl/js/cqt.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js"></script>
 <script>
   function el(id) {
@@ -26,7 +26,7 @@ title: Interactive CQT Tool
   }
   async function cqt() {
     intext = el('intext').value;
-    const canonical = algorithm_1_14(intext);
+    const canonical = algorithm_2_17(intext);
     const decoder = new TextDecoder('utf-8');
     outtext = decoder.decode(canonical);
     el('outtext').value = outtext;

@@ -24,6 +24,14 @@ The full name of this algorithm is "canonical quoted text 2.17", but it is typic
 
 The name contains two numbers. The first number ("2") versions the logic of the algorithm, and the second number ("17") references the version of the Unicode standard that documents certain details. CQT 1.14 is a different algorithm; see [Conformance](#conformance).
 
+Neither number is a compatibility signal. `cqt2.17` names one exact function, and anything that computes different bytes gets a different name. A change to the logic here produces `cqt3.17`; adopting a later Unicode produces `cqt2.18`. Both break existing signatures, because both change the output for some inputs &mdash; moving from Unicode 16 to 17 altered one compatibility mapping and gave 34 characters a combining class they had not had, which is enough to change the canonical form of any text containing them. There is no version of this algorithm that is "compatible enough" with another, which is why a verifier MUST reject an identifier it does not support rather than falling back to one it does.
+
+Once published, `cqt2.17` is frozen. A defect found in it is not repaired by amending this document; it is repaired by publishing a new algorithm under a new number, leaving this one in place with its defect intact, because signatures already made depend on exactly the bytes it produces today.
+
+This document may still be revised, so long as the bytes do not move. A revision may correct prose, state a behavior that was always required but never written down, add vectors that pin behavior already mandated, or fix a reference implementation that disagreed with this specification. It may not change what any conforming implementation outputs. Revisions are dated, and this is the **2026-08-24 revision**.
+
+Cite the revision when reporting conformance, and bind only `cqt2.17` into anything signed. A signature that named a revision would reject bytes that are identical to the ones it covers.
+
 Unlike 1.14, the Unicode number is exact rather than approximate. Every operation below that consults the Unicode Character Database MUST use Unicode 17.0.0, and an implementation MUST NOT substitute whatever version its runtime happens to ship. The reference implementation depends on `unicodedata2==17.0.0` rather than Python's standard library for this reason, and refuses to load if the versions disagree.
 
 The output of this algorithm can be piped to a digest function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt2.17(text))`. The output can also be piped directly to a digital signature function to produce a *signature over canonical text*. Perhaps better, because it allows text value to be disclosed later, a signature can take as input a canonical hash: `signature over canonical hash = EdDSA(Blake3(cqt2.17(text)))`.
@@ -300,6 +308,8 @@ Pre-substitute a decomposition, where a character's compatibility mapping is mis
 Whichever route is taken, test the normalizer on *sequences* and not only on single characters. A platform normalizer can have correct tables for every scalar and still be wrong when it recomposes: while this specification was being written, `golang.org/x/text` was found to truncate a supplementary-plane starter to 16 bits before its composite lookup, so `U+10041` followed by `U+0301` produced `U+00C1`, and the same clipping made Hebrew `U+05D2 U+0307` produce a Todhri letter. Per-scalar checking cannot find that class of defect. The vectors `astral-starter-survives-normalization` and `hebrew-letter-with-combining-dot` exist to catch it.
 
 What defeats all three is a change to composition itself &mdash; a new primary composite, or a change to the composition exclusion list &mdash; because no substitute behaves like a character that composes differently. Between Unicode 16 and 17 there is no such change, which is why a Unicode 16 runtime can be made exactly conformant. That is a fact about those two versions and not a general guarantee.
+
+A later revision may add vectors, and an implementation that passed before may fail afterwards. That is not a change to the algorithm and it invalidates no signature; it means the implementation was always wrong and nothing had caught it yet. This is not hypothetical &mdash; one of the ports here passed every vector for a day while silently corrupting Hebrew text, until a vector was added that could see it.
 
 An implementation in this repository is conformant exactly insofar as it passes every vector, and no further. Each one carries its own test harness that runs the vectors, so its status is a fact that can be checked rather than a claim made here; an implementation whose harness does not pass MUST NOT be used to produce or verify a `cqt2.17` commitment.
 

@@ -24,19 +24,9 @@ The full name of this algorithm is "canonical quoted text 2.17", but it is typic
 
 The name contains two numbers. The first number ("2") versions the logic of the algorithm, and the second number ("17") references the version of the Unicode standard that documents certain details. CQT 1.14 is a different algorithm; see [Conformance](#conformance).
 
-Neither number is a compatibility signal. `cqt2.17` names one exact function, and anything that computes different bytes gets a different name. A change to the logic here produces `cqt3.17`; adopting a later Unicode produces `cqt2.18`. Both break existing signatures, because both change the output for some inputs &mdash; moving from Unicode 16 to 17 altered one compatibility mapping and gave 34 characters a combining class they had not had, which is enough to change the canonical form of any text containing them. There is no version of this algorithm that is "compatible enough" with another, which is why a verifier MUST reject an identifier it does not support rather than falling back to one it does.
-
-Once published, `cqt2.17` is frozen. A defect found in it is not repaired by amending this document; it is repaired by publishing a new algorithm under a new number, leaving this one in place with its defect intact, because signatures already made depend on exactly the bytes it produces today.
-
-This document may still be revised, so long as the bytes do not move. A revision may correct prose, state a behavior that was always required but never written down, add vectors that pin behavior already mandated, or fix a reference implementation that disagreed with this specification. It may not change what any conforming implementation outputs. Revisions are dated, and this is the **2026-08-24 revision**.
-
-Cite the revision when reporting conformance, and bind only `cqt2.17` into anything signed. A signature that named a revision would reject bytes that are identical to the ones it covers.
-
-Unlike 1.14, the Unicode number is exact rather than approximate. Every operation below that consults the Unicode Character Database MUST use Unicode 17.0.0, and an implementation MUST NOT substitute whatever version its runtime happens to ship. The reference implementation depends on `unicodedata2==17.0.0` rather than Python's standard library for this reason, and refuses to load if the versions disagree.
+`cqt2.17` names one exact function, frozen at publication. Neither number is a compatibility signal, and a protocol that uses CQT MUST bind the exact ASCII identifier `cqt2.17` in whatever it signs. What that commits everyone to, and how this document may still change without breaking it, is in [Appendix: what the version numbers promise](#appendix-what-the-version-numbers-promise).
 
 The output of this algorithm can be piped to a digest function to produce a *canonical hash* of text. For example: `canonical hash = Blake3(cqt2.17(text))`. The output can also be piped directly to a digital signature function to produce a *signature over canonical text*. Perhaps better, because it allows text value to be disclosed later, a signature can take as input a canonical hash: `signature over canonical hash = EdDSA(Blake3(cqt2.17(text)))`.
-
-A protocol that uses CQT MUST bind the exact ASCII identifier `cqt2.17` in whatever it signs, so a verifier cannot silently substitute a different algorithm or Unicode version. A verifier MUST reject an identifier it does not support rather than falling back to one it does.
 
 ## Goals
 
@@ -53,45 +43,15 @@ One goal is deliberately absent: the algorithm is not required to be idempotent.
 
 ## Protected content
 
-A *protected span* is a run of characters that the algorithm recognizes as machine-readable syntax rather than prose. Its bytes are copied to the output unchanged. None of the transformations in the algorithm below inspects or alters its contents.
+Sometimes a quotation contains a fragment that must survive exactly: a command, a hash, a snippet of code. Such a fragment is not human-friendly text at all. It is machine-readable syntax, and the transformations that make prose comparable would destroy it.
 
-Recognition happens once, on the input, before any transformation. This is the whole of the test: either the input satisfies the pattern or it does not. A span that only *becomes* recognizable later &mdash; because normalization folded a fullwidth character into a backtick, or because removing an invisible closed a gap in `http://` &mdash; was not machine-readable syntax when it arrived, and is treated as the prose it was.
+A *protected span* is a run of characters the algorithm recognizes as machine-readable syntax rather than prose. Its bytes are copied to the output unchanged, and none of the transformations below inspects or alters its contents. There are three kinds: a fenced code block, an inline code span, and an HTTP(S) URL.
+
+Recognition happens once, on the input, before any transformation. Either the input satisfies the pattern or it does not. A span that only *becomes* recognizable later, because normalization folded a fullwidth character into a backtick or removing an invisible closed a gap in `http://`, was not machine-readable syntax when it arrived, and is treated as the prose it was.
 
 For the transformations that surround it, a complete protected span behaves as a single character that is neither whitespace nor punctuation. Ordinary spaces on either side of it remain ordinary word-separating spaces.
 
-Recognition has this precedence: fenced code blocks first, then inline code spans and HTTP(S) URLs in whatever prose remains.
-
-The prose that remains is a set of segments, each lying between two fences or at one end of the input. Scanning happens within a segment and never across one, so a backtick before a fence cannot pair with a backtick after it, and a URL stops at a fence boundary.
-
-Within a segment, scan left to right and take whichever span begins first. The two kinds cannot begin at the same place, since a code span starts at a backtick and a URL at an `h`, so no tie-break is needed. They can still meet: a backtick ends a URL span, and then opens a code span of its own, so in `http://a.test/x` followed by a backtick the URL stops there and the backtick begins something new.
-
-### Fenced code blocks
-
-For fence recognition, a line ending is exactly LF (`U+000A`), CR (`U+000D`), or the two-character sequence CRLF. Other Unicode separators do not end a line. A complete line is the text from the start of the input, or from just after a line ending, up to and including the next line ending or the end of the input.
-
-An opening fence is a complete line containing, in order: zero to three ASCII spaces; a run of three or more backticks; an optional info string containing no backtick; and then a line ending or the end of input. A closing fence is a later complete line containing zero to three ASCII spaces, a backtick run at least as long as the opening one, optional ASCII spaces or tabs, and then a line ending or the end of input.
-
-The protected span covers the opening and closing lines, the line ending that follows the closing line, and the line ending that precedes the opening line. Taking the preceding line ending keeps the fence at the start of a line after the surrounding prose has been flattened into spaces.
-
-When one fence begins on the line after another ends, that preceding line ending has already been taken by the earlier span. Spans never overlap: the later span begins where the earlier one ended, and the shared line ending belongs to the earlier.
-
-An opening fence with no closing fence is not a fence. The pattern requires both lines; when the second one is missing, the pattern is simply absent, and the backticks are prose like any other characters. Failing to match is not an error.
-
-Scanning then resumes on the line after the failed opener, not after the block it appeared to open. A line inside that block may therefore open a fence of its own. A run of four backticks with no four-backtick closer is prose, and a three-backtick line beneath it can still open a fence that closes later.
-
-### Inline code spans
-
-A run of one or more backticks opens an inline code span when a later run of exactly the same length exists and is not part of a longer run. The pair of delimiters and everything between them is protected.
-
-Runs are maximal. An unmatched run is prose in its entirety, and scanning resumes after the whole run; no shorter piece of an unmatched run may open a span.
-
-### HTTP(S) URL spans
-
-The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. The comparison is ASCII-only: a character outside `A`-`Z` and `a`-`z` never matches a scheme character, so `U+017F LATIN SMALL LETTER LONG S` does not match `s`. [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3.1) allows only ASCII letters in a scheme, and an implementation whose case-insensitive comparison applies Unicode case folding will protect text that is not a URL.
-
-Recognition is lexical. CQT does not validate the host, resolve the URL, or touch the network.
-
-The span begins at the character that matched the `h` of the scheme, whatever its case, and runs until the first Unicode 17 whitespace character, the first `<`, `>`, `"` or backtick, or the first unmatched closing parenthesis. Parentheses inside the URL are counted, beginning after the `://`, so `https://example.test/Foo_(bar)` is one span. Other trailing punctuation is included rather than guessed to be prose, because it may legally belong to the URL. Percent encoding, non-ASCII spelling, scheme case, repeated hyphens, query ampersands and fragments all survive exactly.
+The grammar of each kind is in [Recognizing protected content](#recognizing-protected-content), after the algorithm.
 
 ## Algorithm
 
@@ -240,6 +200,42 @@ Start with input content that has been transformed into plain text.
 
 Each step runs once, in order. Nothing is repeated until it settles, and nothing looks at the output to decide whether the input was acceptable.
 
+## Recognizing protected content
+
+The three kinds of protected span, in the precedence recognition applies to them.
+
+Fenced code blocks are recognized first. Inline code spans and HTTP(S) URLs are then recognized in whatever prose remains, which is a set of segments, each lying between two fences or at one end of the input. Scanning happens within a segment and never across one, so a backtick before a fence cannot pair with a backtick after it, and a URL stops at a fence boundary.
+
+Within a segment, scan left to right and take whichever span begins first. The two kinds cannot begin at the same place, since a code span starts at a backtick and a URL at an `h`, so no tie-break is needed. They can still meet: a backtick ends a URL span, and then opens a code span of its own, so in `http://a.test/x` followed by a backtick the URL stops there and the backtick begins something new.
+
+### Fenced code blocks
+
+For fence recognition, a line ending is exactly LF (`U+000A`), CR (`U+000D`), or the two-character sequence CRLF. Other Unicode separators do not end a line. A complete line is the text from the start of the input, or from just after a line ending, up to and including the next line ending or the end of the input.
+
+An opening fence is a complete line containing, in order: zero to three ASCII spaces; a run of three or more backticks; an optional info string containing no backtick; and then a line ending or the end of input. A closing fence is a later complete line containing zero to three ASCII spaces, a backtick run at least as long as the opening one, optional ASCII spaces or tabs, and then a line ending or the end of input.
+
+The protected span covers the opening and closing lines, the line ending that follows the closing line, and the line ending that precedes the opening line. Taking the preceding line ending keeps the fence at the start of a line after the surrounding prose has been flattened into spaces.
+
+When one fence begins on the line after another ends, that preceding line ending has already been taken by the earlier span. Spans never overlap: the later span begins where the earlier one ended, and the shared line ending belongs to the earlier.
+
+An opening fence with no closing fence is not a fence. The pattern requires both lines; when the second one is missing, the pattern is simply absent, and the backticks are prose like any other characters. Failing to match is not an error.
+
+Scanning then resumes on the line after the failed opener, not after the block it appeared to open. A line inside that block may therefore open a fence of its own. A run of four backticks with no four-backtick closer is prose, and a three-backtick line beneath it can still open a fence that closes later.
+
+### Inline code spans
+
+A run of one or more backticks opens an inline code span when a later run of exactly the same length exists and is not part of a longer run. The pair of delimiters and everything between them is protected.
+
+Runs are maximal. An unmatched run is prose in its entirety, and scanning resumes after the whole run; no shorter piece of an unmatched run may open a span.
+
+### HTTP(S) URL spans
+
+The ASCII strings `http://` and `https://` are recognized case-insensitively at any position in unprotected prose. The comparison is ASCII-only: a character outside `A`-`Z` and `a`-`z` never matches a scheme character, so `U+017F LATIN SMALL LETTER LONG S` does not match `s`. [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3.1) allows only ASCII letters in a scheme, and an implementation whose case-insensitive comparison applies Unicode case folding will protect text that is not a URL.
+
+Recognition is lexical. CQT does not validate the host, resolve the URL, or touch the network.
+
+The span begins at the character that matched the `h` of the scheme, whatever its case, and runs until the first Unicode 17 whitespace character, the first `<`, `>`, `"` or backtick, or the first unmatched closing parenthesis. Parentheses inside the URL are counted, beginning after the `://`, so `https://example.test/Foo_(bar)` is one span. Other trailing punctuation is included rather than guessed to be prose, because it may legally belong to the URL. Percent encoding, non-ASCII spelling, scheme case, repeated hyphens, query ampersands and fragments all survive exactly.
+
 ## Worked examples
 
 These are chosen to be dense rather than typical. Each one exercises many rules at once, because the interactions are where implementations diverge. The vectors in [goldens/cqt2.17.json](goldens/cqt2.17.json) test rules one at a time.
@@ -333,3 +329,14 @@ This algorithm also leaves intact some differences that some audiences may wish 
 * Because each step runs once, a transformation that would have enabled an earlier step does not get a second chance. `:)` becomes `:-)`, and so does `hello :)`, because the emoticon is recognized before the space in front of it is removed. But `: )` becomes `:)` and stops there: closing the gap produces an emoticon that step 7.8 has already gone past. Text that has been mangled into `: )` by something upstream will not be recovered.
 
 Finally, the output of this algorithm is a canonical form, not a substitute for the input. Running CQT on its own output may produce something different again, and that is expected: the algorithm is a projection from human text, applied once, at the moment something is signed or verified.
+
+## Appendix: what the version numbers promise
+
+Neither number is a compatibility signal. `cqt2.17` names one exact function, and anything that computes different bytes gets a different name. A change to the logic here produces `cqt3.17`; adopting a later Unicode produces `cqt2.18`. Both break existing signatures, because both change the output for some inputs &mdash; moving from Unicode 16 to 17 altered one compatibility mapping and gave 34 characters a combining class they had not had, which is enough to change the canonical form of any text containing them. There is no version of this algorithm that is "compatible enough" with another, which is why a verifier MUST reject an identifier it does not support rather than falling back to one it does.
+
+Once published, `cqt2.17` is frozen. A defect found in it is not repaired by amending this document; it is repaired by publishing a new algorithm under a new number, leaving this one in place with its defect intact, because signatures already made depend on exactly the bytes it produces today.
+
+This document may still be revised, so long as the bytes do not move. A revision may correct prose, state a behavior that was always required but never written down, add vectors that pin behavior already mandated, or fix a reference implementation that disagreed with this specification. It may not change what any conforming implementation outputs. Revisions are dated, and this is the **2026-08-24 revision**.
+
+Cite the revision when reporting conformance, and bind only `cqt2.17` into anything signed. A signature that named a revision would reject bytes that are identical to the ones it covers.
+

@@ -51,6 +51,10 @@ jobs:
         run: node -p "'ICU ' + process.versions.icu + ' / Unicode ' + process.versions.unicode"
       - run: node conformance.mjs
         working-directory: impl/js
+      # The interactive tool at form.html is published but otherwise untested;
+      # it broke once when the port's entry point was renamed.
+      - run: node demo-page-check.mjs
+        working-directory: impl/js
 
   go:
     name: go / ${{ matrix.go-version }}

@@ -492,6 +492,21 @@
       "id": "hebrew-final-kaf-with-combining-dot",
       "input": "ך̇",
       "output": "ך̇"
+    },
+    {
+      "id": "worked-example-typography",
+      "input": "“Le rapport ﬁnal — R&D, 1⁄2 fait — coûte 3--4 k€ ; voir https://example.test/a--b?q=1&r=2 … et c’est prêt !” 😊  日本語も：「テスト」。  राम। श्याम",
+      "output": "'Le rapport final - R & D, 1/2 fait - coûte 3-4 k€; voir https://example.test/a--b?q=1&r=2... et c'est prêt!':-) 日本語も:'テスト'. राम। श्याम"
+    },
+    {
+      "id": "worked-example-fences",
+      "input": "Run  it with `--dry-run  &  --verbose` first.\n```python\nsubprocess.run(\"ls  -l && pwd\", shell=True)   # don’t  do  this\n```\nI keep typing ``` and getting nothing.",
+      "output": "Run it with `--dry-run  &  --verbose` first.\n```python\nsubprocess.run(\"ls  -l && pwd\", shell=True)   # don’t  do  this\n```\nI keep typing ``` and getting nothing."
+    },
+    {
+      "id": "worked-example-invisibles",
+      "input": "ปาก​กา a​b  soft­hyphen  file‮gnp.exe  a\u0000b  क्‍ष",
+      "output": "ปาก​กา ab softhyphen filegnp.exe ab क्‍ष"
     }
   ]
 }

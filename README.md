@@ -238,50 +238,107 @@ The span begins at the character that matched the `h` of the scheme, whatever it
 
 ## Worked examples
 
-These are chosen to be dense rather than typical. Each one exercises many rules at once, because the interactions are where implementations diverge. The vectors in [goldens/cqt2.17.json](goldens/cqt2.17.json) test rules one at a time.
+These are chosen to be dense rather than typical. Each one exercises many rules at once, because the interactions are where implementations diverge; most vectors in [goldens/cqt2.17.json](goldens/cqt2.17.json) test rules one at a time instead.
+
+All three examples are themselves vectors &mdash; `worked-example-typography`, `worked-example-fences` and `worked-example-invisibles` &mdash; so every conforming implementation produces the output shown here, and a test asserts that these blocks and those vectors agree.
+
+Each example gives its input, then its output, then a table pairing the fragments that changed with the step that changed them. Fragments not in the table came through untouched.
 
 ### A quotation with mixed scripts and typography
 
-```text
+A line from a French press release, pasted through a word processor on the way to a chat client.
+
 Input:
+
+```text
 “Le rapport ﬁnal — R&D, 1⁄2 fait — coûte 3--4 k€ ; voir https://example.test/a--b?q=1&r=2 … et c’est prêt !” 😊  日本語も：「テスト」。  राम। श्याम
+```
 
 Output:
+
+```text
 'Le rapport final - R & D, 1/2 fait - coûte 3-4 k€; voir https://example.test/a--b?q=1&r=2... et c'est prêt!':-) 日本語も:'テスト'. राम। श्याम
 ```
 
-Fifteen rules fire here. The smart quotes and the CJK corner brackets both collapse onto the ASCII apostrophe. The <code>&#xfb01;</code> ligature becomes `fi` under NFKC, and the fullwidth colon becomes an ASCII colon. Both em dashes become hyphens, and `3--4` collapses to `3-4` &mdash; but `a--b` inside the URL does not, because the URL is a protected span, and neither does the `&` in its query string. The bare `&` in `R&D` is spaced out to `R & D`. The fraction slash becomes an ordinary slash. The ellipsis becomes three full stops, which then bind leftward onto the URL. French typography puts a space before `!` and `;`; those spaces are removed, because both characters bind to their left. The Devanagari danda keeps the space that follows it, because nothing binds rightward there &mdash; the rule is about which side punctuation attaches to, not about deleting spaces near punctuation. The emoji becomes `:-)` and then loses the space in front of it, since a colon binds left.
+In the input | becomes | because
+--- | --- | ---
+<code>&#x201c;</code> <code>&#x201d;</code> <code>&#x2019;</code> <code>&#x300c;</code> <code>&#x300d;</code> | `'` | every quote character folds onto the ASCII apostrophe (step 7.6)
+<code>&#xfb01;</code> | `fi` | NFKC breaks the ligature (step 4)
+<code>&#xff1a;</code> | `:` | NFKC maps the fullwidth colon to its ASCII form (step 4)
+<code>&#x2014;</code> | `-` | every character in the dash category becomes an ASCII hyphen (step 7.1)
+`3--4` | `3-4` | a run of two or more hyphens collapses to one (step 7.2)
+<code>&#x3002;</code> | `.` | the ideographic full stop becomes an ordinary one (step 7.3)
+<code>&#x2026;</code> | `...` | the ellipsis expands to three full stops (step 7.4)
+<code>1&#x2044;2</code> | `1/2` | the fraction slash becomes an ordinary slash (step 7.5)
+<code>&#x1f60a;</code> | `:-)` | an autocorrect substitution is run backwards (step 7.7)
+`R&D` | `R & D` | a bare ampersand is spaced out whatever surrounds it (step 7.10)
+`k€ ;` and `prêt !` | `k€;` and `prêt!` | French typography spaces these; both bind to their left, so the space goes (step 7.9)
+`https://example.test/a--b?q=1&r=2` | unchanged | a URL is a protected span, so neither step 7.2 nor step 7.10 ever sees it (step 3)
+`राम। श्याम` | unchanged | the danda binds left, and nothing binds rightward, so the space after it stays (step 7.9)
+two spaces | one space | a run of whitespace collapses to a single space (step 6.1)
+
+Two rows above depend on an earlier one having already fired. The ellipsis is expanded to `...` by step 7.4 and only then attached leftward by step 7.9, which is why the space between it and the URL disappears: <code>&#x2026;</code> is not terminal punctuation, but `.` is. The emoji loses the space in front of it for the same reason, having become something that starts with a colon.
 
 ### Prose wrapped around machine-readable syntax
 
-````text
-Input:
-Before  the  fence, `A  &  B--C` stays.
-```python
-x = "A  &  B--C"   # two  spaces survive
-```
-After, an unclosed ``` is only prose.
+A chat message giving someone advice, with a command, a snippet and a complaint in it.
 
-Output:
-Before the fence, `A  &  B--C` stays.
+Input:
+
+````text
+Run  it with `--dry-run  &  --verbose` first.
 ```python
-x = "A  &  B--C"   # two  spaces survive
+subprocess.run("ls  -l && pwd", shell=True)   # don’t  do  this
 ```
-After, an unclosed ``` is only prose.
+I keep typing ``` and getting nothing.
 ````
 
-The prose loses its doubled spaces; everything inside the inline code span and the fenced block keeps its own, along with the doubled hyphens and the unspaced ampersands that the prose rules would have rewritten. The line endings around the fence survive, while the line ending after it does not, having been flattened into the space before `After`. The trailing <code>&#x60;&#x60;&#x60;</code> has no closing fence, so it is not a fence at all, and it passes through as the three ordinary characters it is.
+Output:
+
+````text
+Run it with `--dry-run  &  --verbose` first.
+```python
+subprocess.run("ls  -l && pwd", shell=True)   # don’t  do  this
+```
+I keep typing ``` and getting nothing.
+````
+
+In the input | becomes | because
+--- | --- | ---
+the doubled spaces in the prose | single spaces | prose gets the whole algorithm, so a run of whitespace collapses (step 6.1)
+the inline code span | unchanged | it is protected, so its doubled spaces, the `--` of each flag and its unspaced `&` are never seen by steps 6.1, 7.2 and 7.10 (step 3)
+the ```` ```python ```` block | unchanged | it is protected too, so its doubled spaces, its `&&`, its double quotes and its curly apostrophe all survive (step 3)
+the line endings around the fence | unchanged | the span takes the line ending before the opening fence and the one after the closing fence, which is what keeps the fence at the start of a line (step 3)
+the trailing ```` ``` ```` | unchanged | with no closing fence there is no fence, so these are three ordinary characters of prose
+
+Only the first line changes. Everything the author marked survives exactly, including five things &mdash; a doubled space, a doubled hyphen, an unspaced ampersand, an ASCII double quote and a curly apostrophe &mdash; that the prose rules would have rewritten had they appeared a few characters earlier.
 
 ### Invisible characters
 
-Nothing here is legible as text, so the codepoints are given instead.
+Nothing here is legible as text, so a character that cannot be seen is written as its codepoint in angle brackets. `<200B>` stands for one `U+200B`, and the angle brackets are notation rather than input.
+
+Input:
 
 ```text
-Input:   ปาก<200B>กา a<200B>b  soft<00AD>hyphen  file<202E>gnp.exe  a<0000>b  क्<200D>ष  x<D800>y
-Output:  ปาก<200B>กา ab softhyphen filegnp.exe ab क्<200D>ष xy
+ปาก<200B>กา a<200B>b  soft<00AD>hyphen  file<202E>gnp.exe  a<0000>b  क्<200D>ष
 ```
 
-The `U+200B` between two Thai characters survives, because Thai divides words with it; the one between `a` and `b` does not. The soft hyphen goes, as a layout artifact. The right-to-left override goes as part of making the text plain, so `file<202E>gnp.exe` &mdash; which displays as `fileexe.png` &mdash; cannot be signed as one thing while being read as another. The NUL goes for the same reason, and so does the unpaired surrogate. The zero width joiner in the Devanagari conjunct stays, because it changes which glyph a reader sees.
+Output:
+
+```text
+ปาก<200B>กา ab softhyphen filegnp.exe ab क्<200D>ष
+```
+
+In the input | becomes | because
+--- | --- | ---
+`ปาก<200B>กา` | unchanged | Thai writes without spaces and divides words with `U+200B`; both neighbors qualify (step 5.2)
+`a<200B>b` | `ab` | here the neighbors are Latin, so the same character is a layout artifact (step 5.1)
+`soft<00AD>hyphen` | `softhyphen` | a soft hyphen is a hint to a line breaker (step 5.1)
+`file<202E>gnp.exe` | `filegnp.exe` | the override displays this as `fileexe.png`, so it cannot be signed as one thing and read as another (step 2.3)
+`a<0000>b` | `ab` | a control character is not plain text (step 2.2)
+`क्<200D>ष` | unchanged | the zero width joiner selects the conjunct, changing which glyph a reader sees (step 5.3)
+
+An unpaired surrogate is removed here too, by step 2.1, but it cannot appear in this example: JSON has no portable spelling for a lone surrogate, so no vector could pin it, and on three of the six runtimes in this repository a string cannot hold one in the first place.
 
 ## Conformance
 
@@ -336,7 +393,7 @@ Neither number is a compatibility signal. `cqt2.17` names one exact function, an
 
 Once published, `cqt2.17` is frozen. A defect found in it is not repaired by amending this document; it is repaired by publishing a new algorithm under a new number, leaving this one in place with its defect intact, because signatures already made depend on exactly the bytes it produces today.
 
-This document may still be revised, so long as the bytes do not move. A revision may correct prose, state a behavior that was always required but never written down, add vectors that pin behavior already mandated, or fix a reference implementation that disagreed with this specification. It may not change what any conforming implementation outputs. Revisions are dated, and this is the **2026-08-24 revision**.
+This document may still be revised, so long as the bytes do not move. A revision may correct prose, state a behavior that was always required but never written down, add vectors that pin behavior already mandated, or fix a reference implementation that disagreed with this specification. It may not change what any conforming implementation outputs. Revisions are dated, and this is the **2026-08-25 revision**.
 
 Cite the revision when reporting conformance, and bind only `cqt2.17` into anything signed. A signature that named a revision would reject bytes that are identical to the ones it covers.
 

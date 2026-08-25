@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from pathlib import Path
 
@@ -15,6 +16,18 @@ from cqt import (
 
 
 GOLDENS_PATH = Path(__file__).resolve().parents[2] / "goldens" / "cqt2.17.json"
+README_PATH = Path(__file__).resolve().parents[2] / "README.md"
+
+# The three worked examples in README.md are also vectors, so the most visible
+# outputs in the specification cannot drift from what the algorithm does. This
+# test pins the prose to the vector; test_normative_golden pins the vector to
+# the implementation. form.html is held in place the same way, by
+# impl/js/demo-page-check.mjs.
+WORKED_EXAMPLE_IDS = [
+    "worked-example-typography",
+    "worked-example-fences",
+    "worked-example-invisibles",
+]
 
 
 def load_goldens():
@@ -33,6 +46,48 @@ def test_golden_manifest():
     assert len(inputs) == len(set(inputs))
     # CQT is total: every vector has an output and none has an error.
     assert all("output" in case and "error" not in case for case in manifest["cases"])
+
+
+def _as_written_in_the_readme(text):
+    # A character that cannot be seen is written as its codepoint in angle
+    # brackets, which is the notation the third worked example documents. Line
+    # endings are excluded, since the second example shows them as themselves.
+    return "".join(
+        "<%04X>" % ord(char)
+        if unicodedata.category(char) in ("Cc", "Cf") and not char.isspace()
+        else char
+        for char in text
+    )
+
+
+def _worked_example_blocks():
+    section = README_PATH.read_text(encoding="utf-8")
+    section = section.split("\n## Worked examples\n", 1)[1].split("\n## ", 1)[0]
+    lines = section.split("\n")
+    blocks, i = [], 0
+    while i < len(lines):
+        # Fences here vary in length: the example that contains a fenced block
+        # is itself shown inside a longer one. A table row may open with an
+        # inline code span, so an opener has to be a whole line of backticks
+        # and an optional info string.
+        run = re.fullmatch("(`{3,})[^`]*", lines[i])
+        if run:
+            close = lines.index(run.group(1), i + 1)
+            blocks.append("\n".join(lines[i + 1 : close]))
+            i = close + 1
+        else:
+            i += 1
+    return blocks
+
+
+def test_worked_examples_are_the_vectors_they_claim_to_be():
+    cases = {case["id"]: case for case in load_goldens()["cases"]}
+    blocks = _worked_example_blocks()
+    assert len(blocks) == 2 * len(WORKED_EXAMPLE_IDS)
+    for n, case_id in enumerate(WORKED_EXAMPLE_IDS):
+        case = cases[case_id]
+        assert blocks[2 * n] == _as_written_in_the_readme(case["input"]), case_id
+        assert blocks[2 * n + 1] == _as_written_in_the_readme(case["output"]), case_id
 
 
 @pytest.mark.parametrize("case", load_goldens()["cases"], ids=lambda case: case["id"])

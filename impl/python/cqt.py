@@ -1,4 +1,4 @@
-"""Reference implementation of Canonical Quoted Text 2.17."""
+"""Reference implementation of Canonical Quoted Text 3.17."""
 
 from __future__ import annotations
 
@@ -12,26 +12,39 @@ UNICODE_VERSION = "17.0.0"
 
 if unicodedata.unidata_version != UNICODE_VERSION:
     raise RuntimeError(
-        f"cqt2.17 requires Unicode {UNICODE_VERSION}, "
+        f"cqt3.17 requires Unicode {UNICODE_VERSION}, "
         f"but unicodedata2 provides {unicodedata.unidata_version}"
     )
+
+
+FENCE = "fence"
+INLINE = "inline"
+URL = "url"
 
 
 @dataclass(frozen=True)
 class _Span:
     start: int
     end: int
+    kind: str
 
 
 BIDI_CONTROLS = frozenset(
     "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
 )
-REMOVED_INVISIBLES = frozenset("\u00ad\u200b\u2060\ufeff")
+REMOVED_INVISIBLES = frozenset("\u00ad\u200b\u2060")
+REMOVED_ARTIFACTS = frozenset("\ufeff")
 WHITE_SPACE = frozenset(
     "\u0009\u000a\u000b\u000c\u000d\u0020\u0085\u00a0\u1680"
     "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a"
     "\u2028\u2029\u202f\u205f\u3000"
 )
+# Step 2 folds every line terminator onto LF, so from step 3 onward LF is
+# the only one, and "horizontal whitespace" is the rest of White_Space.
+LINE_TERMINATORS = frozenset("\u000a\u000b\u000c\u000d\u0085\u2028\u2029")
+HORIZONTAL_WHITE_SPACE = WHITE_SPACE - frozenset("\u000a")
+_HWS = "[" + "".join(re.escape(c) for c in sorted(HORIZONTAL_WHITE_SPACE)) + "]"
+
 DASH_PUNCTUATION = frozenset(
     "\u002d\u058a\u05be\u1400\u1806\u2010\u2011\u2012\u2013\u2014\u2015"
     "\u2e17\u2e1a\u2e3a\u2e3b\u2e40\u2e5d\u301c\u3030\u30a0"
@@ -127,25 +140,52 @@ AUTOCORRECT_PAIRS = tuple(
     )
 )
 
+# The three whose second character is a letter carry a trailing guard: they
+# convert only when what follows is not an ASCII letter, digit, "-" or "_".
+# Without it the table rewrites URI schemes -- "did:peer" became "did:-peer",
+# "urn:oid" became "urn:-oid", and "did:keri:DKxy..." became "did:keri:-DKxy..."
+# because a D-coded CESR key follows the colon. The guard is trailing only; a
+# leading one would also stop converting "lol:p", which people type.
 ASCII_AUTOCORRECT_PAIRS = (
     (":)", ":-)"),
     (":|", ":-|"),
     (":(", ":-("),
-    (":D", ":-D"),
-    (":p", ":-p"),
-    (":o", ":-o"),
     (";)", ";-)"),
 )
+_GUARDED_EMOTICONS = tuple(
+    (re.compile(re.escape(source) + r"(?![A-Za-z0-9_-])"), target)
+    for source, target in ((":D", ":-D"), (":p", ":-p"), (":o", ":-o"))
+)
 
-_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,})([^`\r\n]*)$")
+_FENCE_OPEN = re.compile(_HWS + r"*(`{3,})([^`\n]*)$")
+# The RFC 2045 token the data: mediatype grammar is built from: printable ASCII
+# except space, controls, and the tspecials ()<>@,;:\"/[]?=
+_MEDIA_TOKEN = r"[A-Za-z0-9!#$%&'*+.^_`|~-]+"
+
+# Three forms of URI span. Any scheme followed by "://" is safe to recognize
+# because "://" does not occur in prose; a BARE scheme is not, because "note:",
+# "data:" and "what I did:" are all ordinary English. The two bare schemes here
+# earn their place by carrying enough structure to be told from a sentence:
+# mailto: must reach an "@" before any whitespace, and data: must present a
+# well-formed RFC 2397 header -- an optional type/subtype, optional parameters,
+# an optional ";base64", and the mandatory comma. "data:abc,x" is prose,
+# because "abc" is not a mediatype.
+#
 # re.ASCII is load-bearing. Without it, IGNORECASE on a str pattern applies full
 # Unicode case folding, so U+017F LATIN SMALL LETTER LONG S matches the "s" of
 # "https" and "httpſ://..." is protected as a URL. RFC 3986 section 3.1 restricts
 # a scheme to ASCII ALPHA, so that match is simply wrong.
-_URL_START = re.compile(r"https?://", re.IGNORECASE | re.ASCII)
+_URL_START = re.compile(
+    r"[A-Za-z][A-Za-z0-9+.-]*://"
+    r"|mailto:(?=[^\s]*@)"
+    r"|data:(?:" + _MEDIA_TOKEN + r"/" + _MEDIA_TOKEN + r")?"
+    r"(?:;" + _MEDIA_TOKEN + r"=" + _MEDIA_TOKEN + r")*(?:;base64)?,",
+    re.IGNORECASE | re.ASCII,
+)
 _MULTI_HYPHEN = re.compile(r"-{2,}")
 _LONG_DOTS = re.compile(r"\.{4,}")
 _SPACES = re.compile(r" +")
+_TRAILING_HWS = re.compile(_HWS + r"+$")
 # The marker is built from NUL deliberately. Step 2 strips every Cc scalar from
 # the input BEFORE protection runs, so the text cannot contain one, and a marker
 # therefore cannot be forged. A marker made of noncharacters could be: an input
@@ -156,28 +196,17 @@ _PROTECTED_MARKER = re.compile(r"\x00CQT[0-9]+\x00")
 
 
 def _line_body(line: str) -> str:
-    if line.endswith("\r\n"):
-        return line[:-2]
-    if line.endswith(("\r", "\n")):
-        return line[:-1]
-    return line
+    return line[:-1] if line.endswith("\n") else line
 
 
 def _lines_with_endings(text: str) -> list[str]:
+    """Split on LF, which step 2 has made the only line terminator."""
     lines: list[str] = []
     start = 0
-    i = 0
-    while i < len(text):
-        if text[i] == "\r":
-            i += 2 if i + 1 < len(text) and text[i + 1] == "\n" else 1
-            lines.append(text[start:i])
-            start = i
-        elif text[i] == "\n":
-            i += 1
-            lines.append(text[start:i])
-            start = i
-        else:
-            i += 1
+    for i, char in enumerate(text):
+        if char == "\n":
+            lines.append(text[start : i + 1])
+            start = i + 1
     if start < len(text):
         lines.append(text[start:])
     return lines
@@ -200,26 +229,28 @@ def _fenced_spans(text: str) -> list[_Span]:
             continue
 
         fence_length = len(opening.group(1))
-        closing = re.compile(rf"^ {{0,3}}`{{{fence_length},}}[ \t]*$")
+        closing = re.compile(_HWS + rf"*`{{{fence_length},}}" + _HWS + r"*$")
         j = i + 1
         while j < len(lines) and not closing.fullmatch(_line_body(lines[j])):
             j += 1
-        if j == len(lines):
-            # No closing line, so the pattern is not present. A run of backticks
-            # in prose is prose. Failing to match is not an error; human text
-            # has no syntax to get wrong.
-            i += 1
-            continue
 
         start = offsets[i]
-        if start >= 2 and text[start - 2 : start] == "\r\n":
-            start -= 2
-        elif start and text[start - 1] in "\r\n":
+        if start and text[start - 1] == "\n":
             start -= 1
         if spans:
             start = max(start, spans[-1].end)
+        if j == len(lines):
+            # An opener with no closer runs to the end of the input rather than
+            # decaying into prose. Truncation is ordinary -- a "show more" fold,
+            # a message length limit, a quoting client that trims -- and under
+            # the old rule losing the closing line reinterpreted the whole block,
+            # turning a one-line loss into total divergence. Protecting to the
+            # end makes that a slope instead of a cliff, and it is also what
+            # CommonMark does, so author intuition already matches.
+            spans.append(_Span(start, len(text), FENCE))
+            break
         end = offsets[j] + len(lines[j])
-        spans.append(_Span(start, end))
+        spans.append(_Span(start, end, FENCE))
         i = j + 1
     return spans
 
@@ -270,7 +301,7 @@ def _inline_and_url_spans(text: str, start: int, end: int) -> list[_Span]:
             closing = _matching_backtick_run(text, run_end, end, run_length)
             if closing is not None:
                 span_end = closing + run_length
-                spans.append(_Span(i, span_end))
+                spans.append(_Span(i, span_end, INLINE))
                 i = span_end
                 continue
             # An unmatched run is ordinary prose in its entirety, so resume AFTER
@@ -284,7 +315,7 @@ def _inline_and_url_spans(text: str, start: int, end: int) -> list[_Span]:
         url = _URL_START.match(text, i, end)
         if url:
             span_end = _url_end(text, url.end(), end)
-            spans.append(_Span(i, span_end))
+            spans.append(_Span(i, span_end, URL))
             i = span_end
             continue
         i += 1
@@ -303,6 +334,194 @@ def _opaque_spans(text: str) -> list[_Span]:
     return spans
 
 
+_LEAD_HWS = re.compile(_HWS + r"+")
+_FOLD_NEWLINES = re.compile(r"\n+" + _HWS + r"*")
+_QUOTE_PREFIX = re.compile(
+    _HWS + r"*>(?:" + _HWS + r"|>)*"
+)
+_URL_AUTHORITY = re.compile(
+    r"([A-Za-z][A-Za-z0-9+.-]*)(://)([^/?#]*)(.*)", re.IGNORECASE | re.ASCII | re.DOTALL
+)
+_URL_SCHEME = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*)(:)(.*)", re.IGNORECASE | re.ASCII | re.DOTALL)
+_DATA_URI = re.compile(
+    r"(data):((?:" + _MEDIA_TOKEN + r"/" + _MEDIA_TOKEN + r")?"
+    r"(?:;" + _MEDIA_TOKEN + r"=" + _MEDIA_TOKEN + r")*(?:;base64)?)(,.*)",
+    re.IGNORECASE | re.ASCII | re.DOTALL,
+)
+
+
+def _lower_data_header(header: str) -> str:
+    """Lowercase what RFC 2045 defines as case-insensitive and nothing else.
+
+    Section 5.1: the type, the subtype and each parameter's attribute NAME are
+    case-insensitive. A parameter's value is not, in general -- charset happens
+    to be, but that is RFC 2046 speaking about one parameter, not a rule about
+    values -- so a value is reproduced exactly. ";base64" is an attribute name
+    with no value and folds with them.
+    """
+    parts = header.split(";")
+    out = [_ascii_lower(parts[0])]
+    for part in parts[1:]:
+        name, sep, value = part.partition("=")
+        out.append(_ascii_lower(name) + sep + value)
+    return ";".join(out)
+
+
+def _ascii_lower(text: str) -> str:
+    """RFC 3986 case-insensitivity is ASCII-only. Unicode lowering would fold
+    characters a scheme or host cannot legally contain, and would be locale-
+    sensitive for the dotted capital I."""
+    return "".join(chr(ord(c) + 32) if "A" <= c <= "Z" else c for c in text)
+
+
+def _remove_artifacts(text: str) -> str:
+    """Step 2.4: drop the byte order mark.
+
+    U+FEFF is a serialization signature rather than a layout hint, so it is not
+    text and does not belong to the author. Removing it here, before anything is
+    recognized, is why it also comes out of a fenced block -- the same reason a
+    NUL and a directional override already did.
+    """
+    return "".join(c for c in text if c not in REMOVED_ARTIFACTS)
+
+
+def _normalize_line_terminators(text: str) -> str:
+    """Step 2.5: every line terminator becomes LF.
+
+    Prose is unaffected, because step 6.1 collapses any of these to a single
+    space either way. What changes is the interior of a protected span, where
+    CRLF and LF used to produce different bytes for the same block. MIME
+    text/plain is CRLF-canonical, so email converts as a matter of course.
+    """
+    text = text.replace("\r\n", "\n")
+    return "".join("\n" if c in LINE_TERMINATORS else c for c in text)
+
+
+def _right_trim_lines(text: str) -> str:
+    """Step 2.6: remove horizontal whitespace before a line ending or the end
+    of the input. Editors, mailers and chat clients add and remove it without
+    asking, and nobody can see it."""
+    return "\n".join(_TRAILING_HWS.sub("", line) for line in text.split("\n"))
+
+
+def _normalize_quote_prefixes(text: str) -> str:
+    """Step 6: every quoted line becomes ">" followed by its content.
+
+    Depth and marker spelling stop being significant; quotedness stays
+    significant. A commitment to one's own words and a commitment to text that
+    quotes someone else remain different commitments, but the same quoted block
+    reaches the same bytes however many hops it has taken and whichever of
+    "> ", ">", ">>" or "> > " the client along the way happened to emit.
+
+    A line whose whole content is the prefix is dropped, because mailers
+    disagree about whether a blank quoted line keeps its marker, and nothing
+    downstream would have preserved it anyway.
+
+    Marking where a quotation STARTS is only half of it. Consecutive lines of
+    the same kind are joined, so the number of markers no longer tracks how a
+    client happened to wrap the text; and the line ending is kept wherever the
+    kind changes, so a quoted question cannot absorb the reply beneath it.
+    Without that second half, "> Did you murder that man?" followed by "No!"
+    reaches the same bytes as "> Did you murder that man? No!" -- which every
+    version of this algorithm before 3.17 did, because quotation extent is
+    line structure and step 6.2 was throwing line structure away.
+    """
+    lines: list[str | None] = []
+    for line in text.split("\n"):
+        match = _QUOTE_PREFIX.match(line)
+        if match:
+            rest = line[match.end():]
+            lines.append(rest if rest.strip() else None)
+            if rest.strip():
+                lines[-1] = ">" + rest
+        else:
+            lines.append(line if line.strip() else None)
+
+    # Join consecutive lines of the same kind, keeping the line ending only
+    # where the kind changes. A blank line is kind-neutral: it belongs to
+    # whatever surrounds it, so it cannot split a quotation.
+    joined: list[str] = []
+    current: list[str] = []
+    current_quoted: bool | None = None
+    for line in lines:
+        if line is None:
+            continue
+        quoted = line.startswith(">")
+        body = line[1:] if quoted else line
+        if current_quoted is not None and quoted != current_quoted:
+            joined.append((">" if current_quoted else "") + " ".join(current))
+            current = []
+        current_quoted = quoted
+        current.append(body)
+    if current_quoted is not None:
+        joined.append((">" if current_quoted else "") + " ".join(current))
+    return "\n".join(joined)
+
+
+def _normalize_fence_indent(body: str) -> str:
+    """Strip leading horizontal whitespace from a fence's delimiter lines.
+
+    Only the two lines that are pure syntax. Indentation inside the block is
+    content -- it is what Python means -- and is never touched.
+    """
+    lines = _lines_with_endings(body)
+    fence_length = None
+    out: list[str] = []
+    for index, line in enumerate(lines):
+        core = _line_body(line)
+        if fence_length is None:
+            opening = _FENCE_OPEN.fullmatch(core)
+            if opening:
+                fence_length = len(opening.group(1))
+                line = _LEAD_HWS.sub("", line, count=1)
+            out.append(line)
+            continue
+        if index == len(lines) - 1:
+            closing = re.compile(_HWS + rf"*`{{{fence_length},}}" + _HWS + r"*$")
+            if closing.fullmatch(core):
+                line = _LEAD_HWS.sub("", line, count=1)
+        out.append(line)
+    return "".join(out)
+
+
+def _normalize_span(kind: str, body: str) -> str:
+    """A protected span is not untouched bytes. It is text canonicalized under
+    a reduced rule set: line structure belongs to the channel, everything else
+    belongs to the author."""
+    if kind == FENCE:
+        return _normalize_fence_indent(body)
+    if kind == INLINE:
+        # A line ending inside an inline span folds to one space, along with any
+        # indentation that follows it. That is what makes an inline span
+        # rewrap-safe, and it is the difference between the two span kinds: an
+        # inline span carries no line structure, a fence does.
+        return _FOLD_NEWLINES.sub(" ", body)
+    if kind == URL:
+        match = _URL_AUTHORITY.fullmatch(body)
+        if match:
+            scheme, separator, authority, rest = match.groups()
+            at = authority.rfind("@")
+            userinfo, host = (
+                (authority[: at + 1], authority[at + 1 :]) if at >= 0 else ("", authority)
+            )
+            return _ascii_lower(scheme) + separator + userinfo + _ascii_lower(host) + rest
+        # A data: URI carries its own case-insensitive fields, defined by
+        # RFC 2045 rather than by RFC 3986: the type, the subtype and each
+        # parameter's attribute name. Those fold; parameter values and the
+        # payload do not.
+        match = _DATA_URI.fullmatch(body)
+        if match:
+            scheme, header, rest = match.groups()
+            return _ascii_lower(scheme) + ":" + _lower_data_header(header) + rest
+        # Any other URI with no authority -- mailto: -- has a case-insensitive
+        # scheme and nothing else this algorithm is entitled to fold.
+        match = _URL_SCHEME.fullmatch(body)
+        if match:
+            scheme, colon, rest = match.groups()
+            return _ascii_lower(scheme) + colon + rest
+    return body
+
+
 def _protect(text: str) -> tuple[str, dict[str, str]]:
     spans = _opaque_spans(text)
     if not spans:
@@ -315,24 +534,33 @@ def _protect(text: str) -> tuple[str, dict[str, str]]:
         marker = f"{_MARKER_OPEN}CQT{marker_number}{_MARKER_CLOSE}"
         parts.append(text[cursor : span.start])
         parts.append(marker)
-        protected[marker] = text[span.start : span.end]
+        protected[marker] = _normalize_span(span.kind, text[span.start : span.end])
         cursor = span.end
     parts.append(text[cursor:])
     return "".join(parts), protected
 
 
 def _collapse_unicode_whitespace(text: str) -> str:
+    """Step 6.2. A run of whitespace becomes one space, or one line ending if
+    the run contains one.
+
+    Step 6.1 has already joined every line within a passage, so the only line
+    endings left at this point are the boundaries between quoted and unquoted
+    text, and those carry meaning that a space would destroy.
+    """
     out: list[str] = []
-    in_whitespace = False
+    run: list[str] = []
     for char in text:
         if char in WHITE_SPACE:
-            if not in_whitespace:
-                out.append(" ")
-            in_whitespace = True
-        else:
-            out.append(char)
-            in_whitespace = False
-    return "".join(out).strip(" ")
+            run.append(char)
+            continue
+        if run:
+            out.append("\n" if "\n" in run else " ")
+            run = []
+        out.append(char)
+    if run:
+        out.append("\n" if "\n" in run else " ")
+    return "".join(out).strip(" \n")
 
 
 def _strip_disallowed(text: str) -> str:
@@ -447,6 +675,7 @@ def _canonicalize_prose(text: str) -> str:
     """
     text = unicodedata.normalize("NFKC", text)
     text = _remove_invisibles(text)
+    text = _normalize_quote_prefixes(text)
     text = _collapse_unicode_whitespace(text)
     text = "".join("-" if char in DASH_PUNCTUATION else char for char in text)
     text = _MULTI_HYPHEN.sub("-", text)
@@ -459,13 +688,15 @@ def _canonicalize_prose(text: str) -> str:
         text = text.replace(source, target)
     for source, target in ASCII_AUTOCORRECT_PAIRS:
         text = text.replace(source, target)
+    for pattern, target in _GUARDED_EMOTICONS:
+        text = pattern.sub(target, text)
     text = _remove_spaces_adjacent_to_punctuation(text)
     text = text.replace("&", " & ")
     return _collapse_unicode_whitespace(text)
 
 
-def algorithm_2_17(plaintext: str) -> bytes:
-    """Return the CQT 2.17 canonical UTF-8 byte stream for ``plaintext``."""
+def algorithm_3_17(plaintext: str) -> bytes:
+    """Return the CQT 3.17 canonical UTF-8 byte stream for ``plaintext``."""
 
     if not isinstance(plaintext, str):
         raise TypeError("plaintext must be str")
@@ -473,10 +704,13 @@ def algorithm_2_17(plaintext: str) -> bytes:
     # override hidden inside a fence or a URL is copied through untouched, and
     # the span becomes a channel for exactly the spoof this removal prevents.
     plaintext = _strip_disallowed(plaintext)
+    plaintext = _remove_artifacts(plaintext)
+    plaintext = _normalize_line_terminators(plaintext)
+    plaintext = _right_trim_lines(plaintext)
     text, protected = _protect(plaintext)
     text = _canonicalize_prose(text)
     text = _PROTECTED_MARKER.sub(lambda match: protected.get(match.group(), match.group()), text)
     return text.encode("utf-8")
 
 
-__all__ = ["UNICODE_VERSION", "algorithm_2_17"]
+__all__ = ["UNICODE_VERSION", "algorithm_3_17"]

@@ -1,14 +1,14 @@
-//! Reference-conformant port of Canonical Quoted Text 2.17 (`cqt2.17`).
+//! Reference-conformant port of Canonical Quoted Text 3.17.
 //!
 //! NOTE: THIS CODE WAS PORTED FROM THE PYTHON REFERENCE IMPLEMENTATION BY AN AI.
 //! DO NOT USE WITHOUT PROVING IT IS CORRECT. ONCE YOU'VE PROVED THAT, PLEASE SUBMIT
 //! A PR THAT REMOVES THIS WARNING FROM THE FILE. (`tests/conformance.rs` runs all
-//! 78 normative vectors in `goldens/cqt2.17.json`; `cargo test` is that proof for
+//! 78 normative vectors in `goldens/cqt3.17.json`; `cargo test` is that proof for
 //! the vectors, but a human has not reviewed this port line by line.)
 //!
 //! # Unicode version
 //!
-//! cqt2.17 requires Unicode 17.0.0 for every operation that consults the character
+//! cqt3.17 requires Unicode 17.0.0 for every operation that consults the character
 //! database. The `unicode-normalization` crate is pinned to `=0.1.25`, whose
 //! `UNICODE_VERSION` is `(17, 0, 0)`; [`assert_unicode_version`] checks that at
 //! runtime and the conformance test calls it. Every other property this algorithm
@@ -43,7 +43,7 @@ pub fn assert_unicode_version() {
     assert_eq!(
         unicode_normalization::UNICODE_VERSION,
         UNICODE_VERSION,
-        "cqt2.17 requires Unicode {:?}, but unicode-normalization provides {:?}",
+        "cqt3.17 requires Unicode {:?}, but unicode-normalization provides {:?}",
         UNICODE_VERSION,
         unicode_normalization::UNICODE_VERSION
     );
@@ -135,7 +135,33 @@ fn is_quote_character(c: char) -> bool {
 
 /// The four layout-only invisibles removed by step 5.1.
 fn is_removed_invisible(c: char) -> bool {
-    matches!(c, '\u{00AD}' | '\u{200B}' | '\u{2060}' | '\u{FEFF}')
+    matches!(c, '\u{00AD}' | '\u{200B}' | '\u{2060}')
+}
+
+/// U+FEFF is a serialization artifact rather than a layout one, so step 2.4
+/// removes it before anything is recognized -- which is why it also comes out
+/// of a protected span.
+fn is_removed_artifact(c: char) -> bool {
+    c == '\u{FEFF}'
+}
+
+/// Step 2.5 folds all of these onto LF, so from step 3 onward LF is the only
+/// line terminator and horizontal whitespace is the rest of `White_Space`.
+fn is_line_terminator(c: char) -> bool {
+    matches!(c, '\u{000A}'..='\u{000D}' | '\u{0085}' | '\u{2028}' | '\u{2029}')
+}
+
+fn is_horizontal_white_space(c: char) -> bool {
+    is_white_space(c) && c != '\n'
+}
+
+/// An RFC 2045 token character: printable ASCII other than space, controls and
+/// the tspecials `()<>@,;:\"/[]?=`
+fn is_token_char(c: char) -> bool {
+    if c <= ' ' || c >= '\u{7F}' {
+        return false;
+    }
+    !matches!(c, '(' | ')' | '<' | '>' | '@' | ',' | ';' | ':' | '\\' | '"' | '/' | '[' | ']' | '?' | '=')
 }
 
 /// Unicode 17 `General_Category` `Ps` or `Pi`: punctuation that binds rightward.
@@ -274,11 +300,39 @@ static ASCII_AUTOCORRECT_PAIRS: &[(&str, &str)] = &[
     (":)", ":-)"),
     (":|", ":-|"),
     (":(", ":-("),
-    (":D", ":-D"),
-    (":p", ":-p"),
-    (":o", ":-o"),
     (";)", ";-)"),
 ];
+
+/// The three whose second character is a letter carry a trailing guard: they
+/// convert only when what follows is not an ASCII letter, digit, `-` or `_`.
+/// Without it the table rewrites URI schemes -- `did:peer` became `did:-peer`
+/// and `did:keri:DKxy...` became `did:keri:-DKxy...`. Trailing only; a leading
+/// guard would also stop converting `lol:p`, which people type.
+static GUARDED_EMOTICONS: &[(&str, &str)] = &[(":D", ":-D"), (":p", ":-p"), (":o", ":-o")];
+
+fn apply_guarded_emoticons(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    'outer: while i < chars.len() {
+        for (from, to) in GUARDED_EMOTICONS {
+            let pattern: Vec<char> = from.chars().collect();
+            if i + pattern.len() > chars.len() || chars[i..i + pattern.len()] != pattern[..] {
+                continue;
+            }
+            let next = i + pattern.len();
+            if next < chars.len() && (chars[next].is_ascii_alphanumeric() || chars[next] == '-' || chars[next] == '_') {
+                continue;
+            }
+            out.push_str(to);
+            i = next;
+            continue 'outer;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
 
 /// The marker is built from NUL deliberately. Step 2 strips every `Cc` scalar
 /// from the input BEFORE protection runs, so the text provably cannot contain
@@ -298,36 +352,33 @@ const MARKER_CLOSE: char = '\u{0}';
 struct Span {
     start: usize,
     end: usize,
+    kind: SpanKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SpanKind {
+    Fence,
+    Inline,
+    Url,
 }
 
 /// The line without its ending: CRLF, CR or LF.
 fn line_body(line: &[char]) -> &[char] {
-    if line.len() >= 2 && line[line.len() - 2] == '\r' && line[line.len() - 1] == '\n' {
-        &line[..line.len() - 2]
-    } else if !line.is_empty() && (line[line.len() - 1] == '\r' || line[line.len() - 1] == '\n') {
+    if !line.is_empty() && line[line.len() - 1] == '\n' {
         &line[..line.len() - 1]
     } else {
         line
     }
 }
 
-/// Split into lines that keep their endings. A line ending is exactly LF, CR or
-/// CRLF; no other Unicode separator ends a line for fence recognition.
+/// Split on LF, which step 2.5 has made the only line terminator.
 fn lines_with_endings(text: &[char]) -> Vec<(usize, usize)> {
     let mut lines = Vec::new();
     let mut start = 0usize;
-    let mut i = 0usize;
-    while i < text.len() {
-        if text[i] == '\r' {
-            i += if i + 1 < text.len() && text[i + 1] == '\n' { 2 } else { 1 };
-            lines.push((start, i));
-            start = i;
-        } else if text[i] == '\n' {
-            i += 1;
-            lines.push((start, i));
-            start = i;
-        } else {
-            i += 1;
+    for i in 0..text.len() {
+        if text[i] == '\n' {
+            lines.push((start, i + 1));
+            start = i + 1;
         }
     }
     if start < text.len() {
@@ -336,14 +387,14 @@ fn lines_with_endings(text: &[char]) -> Vec<(usize, usize)> {
     lines
 }
 
-/// `^ {0,3}(`{3,})([^`\r\n]*)$` -- returns the backtick run length.
+/// A fence delimiter line: any leading horizontal whitespace, a run of three
+/// or more backticks, and an info string containing no backtick. Returns the
+/// run length. There is no three-space limit; CommonMark needs one to tell a
+/// fence from an indented code block, and CQT has no indented code blocks.
 fn fence_open_len(body: &[char]) -> Option<usize> {
     let mut i = 0;
-    while i < body.len() && body[i] == ' ' {
+    while i < body.len() && is_horizontal_white_space(body[i]) {
         i += 1;
-    }
-    if i > 3 {
-        return None;
     }
     let run_start = i;
     while i < body.len() && body[i] == '`' {
@@ -364,11 +415,8 @@ fn fence_open_len(body: &[char]) -> Option<usize> {
 /// ``^ {0,3}`{fence_len,}[ \t]*$``
 fn is_fence_close(body: &[char], fence_len: usize) -> bool {
     let mut i = 0;
-    while i < body.len() && body[i] == ' ' {
+    while i < body.len() && is_horizontal_white_space(body[i]) {
         i += 1;
-    }
-    if i > 3 {
-        return false;
     }
     let run_start = i;
     while i < body.len() && body[i] == '`' {
@@ -377,7 +425,7 @@ fn is_fence_close(body: &[char], fence_len: usize) -> bool {
     if i - run_start < fence_len {
         return false;
     }
-    body[i..].iter().all(|&c| c == ' ' || c == '\t')
+    body[i..].iter().all(|&c| is_horizontal_white_space(c))
 }
 
 fn fenced_spans(text: &[char]) -> Vec<Span> {
@@ -403,26 +451,23 @@ fn fenced_spans(text: &[char]) -> Vec<Span> {
             }
             j += 1;
         }
-        if j == lines.len() {
-            // No closing line, so the pattern is not present. A run of backticks
-            // in prose is prose. Failing to match is not an error; human text
-            // has no syntax to get wrong.
-            i += 1;
-            continue;
-        }
-
         // Take the line ending that precedes the opening line, so the fence still
         // starts a line after the surrounding prose is flattened into spaces.
         let mut start = ls;
-        if start >= 2 && text[start - 2] == '\r' && text[start - 1] == '\n' {
-            start -= 2;
-        } else if start >= 1 && (text[start - 1] == '\r' || text[start - 1] == '\n') {
+        if start >= 1 && text[start - 1] == '\n' {
             start -= 1;
         }
         if let Some(previous) = spans.last() {
             start = start.max(previous.end);
         }
-        spans.push(Span { start, end: lines[j].1 });
+        if j == lines.len() {
+            // An opener with no closer runs to the end of the input rather than
+            // decaying into prose. Truncation is ordinary, and under the old
+            // rule losing one line reinterpreted a whole block.
+            spans.push(Span { start, end: text.len(), kind: SpanKind::Fence });
+            break;
+        }
+        spans.push(Span { start, end: lines[j].1, kind: SpanKind::Fence });
         i = j + 1;
     }
     spans
@@ -465,17 +510,96 @@ fn find_backticks(text: &[char], from: usize, limit: usize, length: usize) -> Op
 
 /// `https?://` compared ASCII-case-insensitively, per RFC 3986 section 3.1. A
 /// Unicode case fold would let `U+017F` match `s`; `eq_ignore_ascii_case` cannot.
-fn url_scheme_len(text: &[char], at: usize, limit: usize) -> Option<usize> {
-    for scheme in ["https://", "http://"] {
-        let n = scheme.chars().count();
-        if at + n <= limit
-            && text[at..at + n]
-                .iter()
-                .zip(scheme.chars())
-                .all(|(&a, b)| a.eq_ignore_ascii_case(&b))
-        {
-            return Some(n);
+/// Match an ASCII literal case-insensitively, ASCII-only, and return the
+/// offset just past it.
+fn literal(text: &[char], at: usize, limit: usize, want: &str) -> Option<usize> {
+    let n = want.chars().count();
+    if at + n <= limit
+        && text[at..at + n].iter().zip(want.chars()).all(|(&a, b)| a.eq_ignore_ascii_case(&b))
+    {
+        Some(at + n)
+    } else {
+        None
+    }
+}
+
+fn run_of_tokens(text: &[char], at: usize, limit: usize) -> Option<usize> {
+    let mut i = at;
+    while i < limit && is_token_char(text[i]) {
+        i += 1;
+    }
+    if i > at {
+        Some(i)
+    } else {
+        None
+    }
+}
+
+/// An RFC 2397 header: an optional `type/subtype`, zero or more
+/// `;attribute=value` parameters, an optional `;base64`, and the mandatory
+/// comma. Returns the offset just past the comma.
+fn data_header(text: &[char], at: usize, limit: usize) -> Option<usize> {
+    let mut i = at;
+    if let Some(j) = run_of_tokens(text, i, limit) {
+        if j < limit && text[j] == '/' {
+            if let Some(k) = run_of_tokens(text, j + 1, limit) {
+                i = k;
+            }
         }
+    }
+    while i < limit && text[i] == ';' {
+        if let Some(j) = literal(text, i, limit, ";base64") {
+            if j < limit && text[j] == ',' {
+                return Some(j + 1);
+            }
+        }
+        let j = run_of_tokens(text, i + 1, limit)?;
+        if j >= limit || text[j] != '=' {
+            return None;
+        }
+        i = run_of_tokens(text, j + 1, limit)?;
+    }
+    if i < limit && text[i] == ',' {
+        Some(i + 1)
+    } else {
+        None
+    }
+}
+
+/// The three forms of URI span, returning the length of the recognized prefix.
+///
+/// Any scheme followed by `://` is safe because `://` does not occur in prose;
+/// a bare scheme is not, because "note:" and "here is the data:" are ordinary
+/// English. The two bare schemes admitted here carry structure a sentence does
+/// not: `mailto:` must reach an `@` before any whitespace, and `data:` must
+/// present a well-formed RFC 2397 header.
+///
+/// Comparison is ASCII-only throughout. A Unicode case fold would make U+017F
+/// LATIN SMALL LETTER LONG S match the `s` of `https`, and RFC 3986 section 3.1
+/// allows only ASCII letters in a scheme, so that match is simply wrong.
+fn url_scheme_len(text: &[char], at: usize, limit: usize) -> Option<usize> {
+    if !text[at].is_ascii_alphabetic() {
+        return None;
+    }
+    let mut j = at + 1;
+    while j < limit && (text[j].is_ascii_alphanumeric() || matches!(text[j], '+' | '-' | '.')) {
+        j += 1;
+    }
+    if let Some(k) = literal(text, j, limit, "://") {
+        return Some(k - at);
+    }
+    if let Some(k) = literal(text, at, limit, "mailto:") {
+        let mut n = k;
+        while n < limit && !is_white_space(text[n]) {
+            if text[n] == '@' {
+                return Some(k - at);
+            }
+            n += 1;
+        }
+        return None;
+    }
+    if let Some(k) = literal(text, at, limit, "data:") {
+        return data_header(text, k, limit).map(|end| end - at);
     }
     None
 }
@@ -517,7 +641,7 @@ fn inline_and_url_spans(text: &[char], start: usize, end: usize) -> Vec<Span> {
             let run_length = run_end - i;
             if let Some(closing) = matching_backtick_run(text, run_end, end, run_length) {
                 let span_end = closing + run_length;
-                spans.push(Span { start: i, end: span_end });
+                spans.push(Span { start: i, end: span_end, kind: SpanKind::Inline });
                 i = span_end;
                 continue;
             }
@@ -531,7 +655,7 @@ fn inline_and_url_spans(text: &[char], start: usize, end: usize) -> Vec<Span> {
 
         if let Some(scheme_len) = url_scheme_len(text, i, end) {
             let span_end = url_end(text, i + scheme_len, end);
-            spans.push(Span { start: i, end: span_end });
+            spans.push(Span { start: i, end: span_end, kind: SpanKind::Url });
             i = span_end;
             continue;
         }
@@ -556,6 +680,236 @@ fn opaque_spans(text: &[char]) -> Vec<Span> {
 
 /// Replace each protected span with a placeholder that is neither whitespace nor
 /// punctuation, returning the rewritten text and the span contents in order.
+/// Step 2.4: drop the byte order mark. U+FEFF is a serialization signature
+/// rather than writing, so it is not text and does not belong to the author.
+/// Removing it here, before recognition, is why it also comes out of a fence.
+fn remove_artifacts(text: Vec<char>) -> Vec<char> {
+    text.into_iter().filter(|&c| !is_removed_artifact(c)).collect()
+}
+
+/// Step 2.5: every line terminator becomes LF. Prose is unaffected, because
+/// step 6.2 collapses any of them to one space either way. What changes is the
+/// interior of a protected span, where CRLF and LF used to give different bytes
+/// for the same block; MIME text/plain is CRLF-canonical.
+fn normalize_line_terminators(text: Vec<char>) -> Vec<char> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut i = 0usize;
+    while i < text.len() {
+        if text[i] == '\r' && i + 1 < text.len() && text[i + 1] == '\n' {
+            out.push('\n');
+            i += 2;
+            continue;
+        }
+        out.push(if is_line_terminator(text[i]) { '\n' } else { text[i] });
+        i += 1;
+    }
+    out
+}
+
+/// Step 2.6: remove the whole run of horizontal whitespace before a line ending
+/// or the end of the input. A pending run is emitted verbatim otherwise --
+/// emitting spaces instead would turn a tab inside an inline code span into a
+/// space, which is not this step's business.
+fn right_trim_lines(text: Vec<char>) -> Vec<char> {
+    let mut out = Vec::with_capacity(text.len());
+    let mut pending: Vec<char> = Vec::new();
+    for c in text {
+        if is_horizontal_white_space(c) {
+            pending.push(c);
+            continue;
+        }
+        if c != '\n' {
+            out.append(&mut pending);
+        }
+        pending.clear();
+        out.push(c);
+    }
+    out
+}
+
+/// Step 6.1: normalize quotation.
+///
+/// The marker first: a leading run of horizontal whitespace, a `>`, and every
+/// following character that is horizontal whitespace or another `>` all become
+/// a single `>`. A line that is nothing but the prefix is dropped, as is a
+/// blank line, because mailers disagree about whether a blank quoted line keeps
+/// its marker and nothing downstream would have preserved it.
+///
+/// Then the structure. Consecutive lines of the same kind are joined, so the
+/// number of markers stops tracking how a client wrapped the text; and the line
+/// ending is kept wherever the kind changes, so a quoted question cannot absorb
+/// the reply beneath it. Marking only where a quotation starts would be worse
+/// than useless: it would look as though quotation were tracked while
+/// `> Did you murder that man?` followed by `No!` still reached the same bytes
+/// as `> Did you murder that man? No!`, as every version before 3.17 did.
+fn normalize_quotation(text: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut kind: Option<bool> = None;
+    for line in text.split('\n') {
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0usize;
+        while i < chars.len() && is_horizontal_white_space(chars[i]) {
+            i += 1;
+        }
+        let quoted = i < chars.len() && chars[i] == '>';
+        if quoted {
+            i += 1;
+            while i < chars.len() && (chars[i] == '>' || is_horizontal_white_space(chars[i])) {
+                i += 1;
+            }
+        } else {
+            i = 0;
+        }
+        let body: String = chars[i..].iter().collect();
+        if body.trim().is_empty() {
+            continue;
+        }
+        if let Some(previous) = kind {
+            if previous != quoted {
+                parts.push(format!("{}{}", if previous { ">" } else { "" }, current.join(" ")));
+                current.clear();
+            }
+        }
+        kind = Some(quoted);
+        current.push(body);
+    }
+    if let Some(previous) = kind {
+        parts.push(format!("{}{}", if previous { ">" } else { "" }, current.join(" ")));
+    }
+    parts.join("\n")
+}
+
+/// Strip leading horizontal whitespace from a fence's delimiter lines. Only the
+/// two lines that are pure syntax; indentation inside the block is content --
+/// it is what Python means -- and is never touched.
+fn normalize_fence_indent(body: &str) -> String {
+    let chars: Vec<char> = body.chars().collect();
+    let lines = lines_with_endings(&chars);
+    let mut fence_len: Option<usize> = None;
+    let mut out = String::with_capacity(body.len());
+    for (index, &(ls, le)) in lines.iter().enumerate() {
+        let mut line = &chars[ls..le];
+        let core = line_body(line);
+        if fence_len.is_none() {
+            if let Some(n) = fence_open_len(core) {
+                fence_len = Some(n);
+                line = drop_leading_horizontal(line);
+            }
+            out.extend(line.iter());
+            continue;
+        }
+        if index == lines.len() - 1 && is_fence_close(core, fence_len.unwrap()) {
+            line = drop_leading_horizontal(line);
+        }
+        out.extend(line.iter());
+    }
+    out
+}
+
+fn drop_leading_horizontal(line: &[char]) -> &[char] {
+    let mut i = 0usize;
+    while i < line.len() && is_horizontal_white_space(line[i]) {
+        i += 1;
+    }
+    &line[i..]
+}
+
+/// Each run of line endings inside an inline span, together with any horizontal
+/// whitespace after it, becomes one space. That is what makes an inline span
+/// rewrap-safe, and it is the difference between the two backtick-delimited
+/// kinds: an inline span carries no line structure, a fence does.
+fn fold_inline_newlines(body: &str) -> String {
+    let chars: Vec<char> = body.chars().collect();
+    let mut out = String::with_capacity(body.len());
+    let mut i = 0usize;
+    while i < chars.len() {
+        if chars[i] != '\n' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        while i < chars.len() && (chars[i] == '\n' || is_horizontal_white_space(chars[i])) {
+            i += 1;
+        }
+        out.push(' ');
+    }
+    out
+}
+
+/// Lowercase what RFC 2045 section 5.1 defines as case-insensitive and nothing
+/// else: the type, the subtype and each parameter's attribute NAME. A value is
+/// not case-insensitive in general -- charset happens to be, but that is RFC
+/// 2046 speaking about one parameter -- so a value is reproduced exactly.
+/// `;base64` is an attribute name with no value and folds with them.
+fn lower_data_header(header: &str) -> String {
+    header
+        .split(';')
+        .enumerate()
+        .map(|(i, part)| {
+            if i == 0 {
+                return part.to_ascii_lowercase();
+            }
+            match part.find('=') {
+                Some(eq) => format!("{}{}", part[..eq].to_ascii_lowercase(), &part[eq..]),
+                None => part.to_ascii_lowercase(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+/// Lowercase the scheme, and the host of a URI that has an authority; RFC 3986
+/// defines both as case-insensitive. A `data:` URI carries its own
+/// case-insensitive fields, defined by RFC 2045. Nothing else folds.
+fn normalize_uri(body: &str) -> String {
+    if let Some(i) = body.find("://") {
+        if i > 0 {
+            let scheme = &body[..i];
+            let rest = &body[i + 3..];
+            let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let (authority, tail) = rest.split_at(end);
+            let (userinfo, host) = match authority.rfind('@') {
+                Some(at) => (&authority[..at + 1], &authority[at + 1..]),
+                None => ("", authority),
+            };
+            return format!(
+                "{}://{}{}{}",
+                scheme.to_ascii_lowercase(),
+                userinfo,
+                host.to_ascii_lowercase(),
+                tail
+            );
+        }
+    }
+    let colon = match body.find(':') {
+        Some(c) => c,
+        None => return body.to_string(),
+    };
+    let scheme = body[..colon].to_ascii_lowercase();
+    if scheme != "data" {
+        return format!("{}{}", scheme, &body[colon..]);
+    }
+    match body[colon + 1..].find(',') {
+        Some(offset) => {
+            let comma = colon + 1 + offset;
+            format!("{}:{}{}", scheme, lower_data_header(&body[colon + 1..comma]), &body[comma..])
+        }
+        None => format!("{}{}", scheme, &body[colon..]),
+    }
+}
+
+/// A protected span is not untouched bytes. It is text canonicalized under a
+/// reduced rule set: line structure belongs to the channel, everything else
+/// belongs to the author.
+fn normalize_span(kind: SpanKind, body: &str) -> String {
+    match kind {
+        SpanKind::Fence => normalize_fence_indent(body),
+        SpanKind::Inline => fold_inline_newlines(body),
+        SpanKind::Url => normalize_uri(body),
+    }
+}
+
 fn protect(text: &[char]) -> (String, Vec<String>) {
     let spans = opaque_spans(text);
     if spans.is_empty() {
@@ -571,7 +925,8 @@ fn protect(text: &[char]) -> (String, Vec<String>) {
         out.push_str("CQT");
         out.push_str(&number.to_string());
         out.push(MARKER_CLOSE);
-        protected.push(text[span.start..span.end].iter().collect());
+        let body: String = text[span.start..span.end].iter().collect();
+        protected.push(normalize_span(span.kind, &body));
         cursor = span.end;
     }
     out.extend(text[cursor..].iter());
@@ -580,7 +935,7 @@ fn protect(text: &[char]) -> (String, Vec<String>) {
 
 /// Put every protected span back where its placeholder is (step 8).
 ///
-/// A marker whose index names no span is left standing: cqt2.17 is a total
+/// A marker whose index names no span is left standing: cqt3.17 is a total
 /// function with no error conditions. Since markers are made of NUL and step 2
 /// strips every `Cc` scalar before protection runs, this is unreachable for any
 /// input -- it exists so a future reordering of the passes degrades rather than
@@ -697,23 +1052,31 @@ fn remove_invisibles(text: &str) -> String {
 }
 
 /// Step 6: each run of `White_Space` becomes one space; then trim spaces.
+/// Step 6.2: a run of whitespace becomes one space, or one line ending if the
+/// run contains one. Step 6.1 has already joined every line within a passage,
+/// so the only line endings left are the boundaries it chose to keep, and those
+/// carry meaning a space would destroy. Step 6.3 then trims both from the edges.
 fn collapse_unicode_whitespace(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut in_whitespace = false;
+    let mut run_length = 0usize;
+    let mut run_has_newline = false;
     for c in text.chars() {
         if is_white_space(c) {
-            if !in_whitespace {
-                out.push(' ');
-            }
-            in_whitespace = true;
-        } else {
-            out.push(c);
-            in_whitespace = false;
+            run_length += 1;
+            run_has_newline |= c == '\n';
+            continue;
         }
+        if run_length > 0 {
+            out.push(if run_has_newline { '\n' } else { ' ' });
+            run_length = 0;
+            run_has_newline = false;
+        }
+        out.push(c);
     }
-    // Python's str.strip(" ") removes ASCII spaces only, which is all that can
-    // remain at either end after the collapse above.
-    out.trim_matches(' ').to_string()
+    if run_length > 0 {
+        out.push(if run_has_newline { '\n' } else { ' ' });
+    }
+    out.trim_matches(|c| c == ' ' || c == '\n').to_string()
 }
 
 /// Collapse every run of `at_least` or more `target` characters to `replacement`.
@@ -795,6 +1158,8 @@ fn canonicalize_prose(text: &str) -> String {
     let mut text: String = text.nfkc().collect();
     // Step 5.
     text = remove_invisibles(&text);
+    // Step 6.1.
+    text = normalize_quotation(&text);
     // Step 6.
     text = collapse_unicode_whitespace(&text);
     // Step 7.1 and 7.2.
@@ -829,6 +1194,7 @@ fn canonicalize_prose(text: &str) -> String {
     for (source, target) in ASCII_AUTOCORRECT_PAIRS {
         text = text.replace(source, target);
     }
+    text = apply_guarded_emoticons(&text);
     // Step 7.9.
     text = remove_spaces_adjacent_to_punctuation(&text);
     // Step 7.10.
@@ -840,14 +1206,17 @@ fn canonicalize_prose(text: &str) -> String {
 // Entry point
 // ---------------------------------------------------------------------------
 
-/// Return the CQT 2.17 canonical UTF-8 byte stream for `plaintext`.
+/// Return the CQT 3.17 canonical UTF-8 byte stream for `plaintext`.
 ///
 /// Total: every input produces output, and there are no error conditions.
-pub fn algorithm_2_17(plaintext: &str) -> Vec<u8> {
+pub fn algorithm_3_17(plaintext: &str) -> Vec<u8> {
     // Strip what cannot be plain text BEFORE recognizing anything. Otherwise an
     // override hidden inside a fence or a URL is copied through untouched, and
     // the span becomes a channel for exactly the spoof this removal prevents.
     let stripped = strip_disallowed(plaintext);
+    let stripped = remove_artifacts(stripped);
+    let stripped = normalize_line_terminators(stripped);
+    let stripped = right_trim_lines(stripped);
     let (text, protected) = protect(&stripped);
     let text = canonicalize_prose(&text);
     // Step 9: UTF-8, no byte order mark. A Rust String already is that.
@@ -856,7 +1225,7 @@ pub fn algorithm_2_17(plaintext: &str) -> Vec<u8> {
 
 /// Convenience wrapper for callers that want the canonical form as text.
 pub fn canonicalize(plaintext: &str) -> String {
-    String::from_utf8(algorithm_2_17(plaintext)).expect("output is UTF-8 by construction")
+    String::from_utf8(algorithm_3_17(plaintext)).expect("output is UTF-8 by construction")
 }
 
 #[cfg(test)]

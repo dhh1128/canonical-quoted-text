@@ -1,7 +1,7 @@
-// Package cqt is a port of the Canonical Quoted Text 2.17 reference
+// Package cqt is a port of the Canonical Quoted Text 3.17 reference
 // implementation (cqt.py) to Go.
 //
-// CQT 2.17 pins every Unicode Character Database lookup to Unicode 17.0.0.
+// CQT 3.17 pins every Unicode Character Database lookup to Unicode 17.0.0.
 // Go's own tables move with the toolchain: go1.26 and earlier ship Unicode
 // 15.0.0 both in the standard library and, through golang.org/x/text, in the
 // normalizer. go1.27 ships 17.0.0 in both. This package therefore requires a
@@ -28,7 +28,7 @@ const UnicodeVersion = "17.0.0"
 func init() {
 	if norm.Version != UnicodeVersion || unicode.Version != UnicodeVersion {
 		panic(fmt.Sprintf(
-			"cqt2.17 requires Unicode %s, but this build sees normalization tables %s "+
+			"cqt3.17 requires Unicode %s, but this build sees normalization tables %s "+
 				"and standard-library tables %s; build with a go1.27 or later toolchain",
 			UnicodeVersion, norm.Version, unicode.Version))
 	}
@@ -36,7 +36,18 @@ func init() {
 
 // A span is a half-open range of scalar values -- not bytes, and not UTF-16
 // code units -- in the working text.
-type span struct{ start, end int }
+type spanKind int
+
+const (
+	fenceSpan spanKind = iota
+	inlineSpan
+	urlSpan
+)
+
+type span struct {
+	start, end int
+	kind       spanKind
+}
 
 const (
 	zeroWidthSpace = '\u200b'
@@ -53,13 +64,25 @@ const (
 )
 
 var (
-	// U+00AD SOFT HYPHEN, U+200B ZERO WIDTH SPACE, U+2060 WORD JOINER and
-	// U+FEFF ZERO WIDTH NO-BREAK SPACE.
-	removedInvisibles = codepoints("00AD", "200B", "2060", "FEFF")
+	// U+00AD SOFT HYPHEN, U+200B ZERO WIDTH SPACE and U+2060 WORD JOINER.
+	// U+FEFF is NOT here: it is a serialization artifact rather than a layout
+	// one, so step 2.4 removes it before anything is recognized, which is why
+	// it also comes out of a protected span.
+	removedInvisibles = codepoints("00AD", "200B", "2060")
+	removedArtifacts  = codepoints("FEFF")
 
-	// The Unicode 17.0.0 White_Space set named in step 6.1.
+	// Step 2.5 folds all of these onto LF, so from step 3 onward LF is the only
+	// line terminator and horizontal whitespace is the rest of White_Space.
+	lineTerminators = codepoints("000A-000D", "0085", "2028-2029")
+
+	// The Unicode 17.0.0 White_Space set named in step 6.2.
 	whiteSpace = codepoints(
 		"0009-000D", "0020", "0085", "00A0", "1680", "2000-200A",
+		"2028-2029", "202F", "205F", "3000")
+
+	// White_Space without LF, which step 2.5 has made the only line terminator.
+	horizontalWhiteSpace = codepoints(
+		"0009", "000B-000D", "0020", "0085", "00A0", "1680", "2000-200A",
 		"2028-2029", "202F", "205F", "3000")
 
 	// DashPunctuation is the Unicode 17.0.0 Dash_Punctuation (Pd) category.
@@ -161,10 +184,52 @@ var asciiAutocorrectPairs = []replacement{
 	{":)", ":-)"},
 	{":|", ":-|"},
 	{":(", ":-("},
+	{";)", ";-)"},
+}
+
+// The three whose second character is a letter carry a trailing guard: they
+// convert only when what follows is not an ASCII letter, digit, "-" or "_".
+// Without it the table rewrites URI schemes -- "did:peer" became "did:-peer"
+// and "did:keri:DKxy..." became "did:keri:-DKxy...". Trailing only; a leading
+// guard would also stop converting "lol:p", which people type.
+var guardedEmoticons = []replacement{
 	{":D", ":-D"},
 	{":p", ":-p"},
 	{":o", ":-o"},
-	{";)", ";-)"},
+}
+
+func applyGuardedEmoticons(text string) string {
+	runes := []rune(text)
+	var b strings.Builder
+	for i := 0; i < len(runes); {
+		matched := false
+		for _, pair := range guardedEmoticons {
+			from := []rune(pair.from)
+			if i+len(from) > len(runes) {
+				continue
+			}
+			if runes[i] != from[0] || runes[i+1] != from[1] {
+				continue
+			}
+			if next := i + len(from); next < len(runes) && isEmoticonGuard(runes[next]) {
+				continue
+			}
+			b.WriteString(pair.to)
+			i += len(from)
+			matched = true
+			break
+		}
+		if !matched {
+			b.WriteRune(runes[i])
+			i++
+		}
+	}
+	return b.String()
+}
+
+func isEmoticonGuard(r rune) bool {
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
+		(r >= '0' && r <= '9') || r == '-' || r == '_'
 }
 
 // codepoints expands "0E01-0E3A"-style ranges into a set of scalars.
@@ -270,24 +335,14 @@ func stripDisallowed(text []rune) []rune {
 // fence recognition a line ending is exactly LF, CR, or CRLF; no other Unicode
 // separator ends a line.
 func lineStartsAndEnds(text []rune) (starts, ends []int) {
-	i, start := 0, 0
-	for i < len(text) {
-		switch text[i] {
-		case '\r':
-			if i+1 < len(text) && text[i+1] == '\n' {
-				i += 2
-			} else {
-				i++
-			}
-		case '\n':
-			i++
-		default:
-			i++
+	start := 0
+	for i := 0; i < len(text); i++ {
+		if text[i] != '\n' {
 			continue
 		}
 		starts = append(starts, start)
-		ends = append(ends, i)
-		start = i
+		ends = append(ends, i+1)
+		start = i + 1
 	}
 	if start < len(text) {
 		starts = append(starts, start)
@@ -298,26 +353,23 @@ func lineStartsAndEnds(text []rune) (starts, ends []int) {
 
 // lineBody drops the line ending, if any, from a line.
 func lineBody(line []rune) []rune {
-	n := len(line)
-	if n >= 2 && line[n-2] == '\r' && line[n-1] == '\n' {
-		return line[:n-2]
-	}
-	if n >= 1 && (line[n-1] == '\r' || line[n-1] == '\n') {
+	if n := len(line); n >= 1 && line[n-1] == '\n' {
 		return line[:n-1]
 	}
 	return line
 }
 
-// fenceOpen implements /^ {0,3}(`{3,})([^`\r\n]*)$/ over a line body: zero to
-// three ASCII spaces, a run of three or more backticks, and an info string
-// containing no backtick. It returns the length of the backtick run.
+// fenceOpen matches a delimiter line: any leading horizontal whitespace, a run
+// of three or more backticks, and an info string containing no backtick. It
+// returns the length of the backtick run.
+//
+// There is no three-space limit. CommonMark needs one so a fence can be told
+// from a four-space indented code block; CQT has no indented code blocks, so
+// the limit protected nothing and cost a fence that transport had indented.
 func fenceOpen(body []rune) (int, bool) {
 	i := 0
-	for i < len(body) && body[i] == ' ' {
+	for i < len(body) && horizontalWhiteSpace[body[i]] {
 		i++
-	}
-	if i > 3 {
-		return 0, false
 	}
 	ticks := 0
 	for i+ticks < len(body) && body[i+ticks] == '`' {
@@ -334,14 +386,13 @@ func fenceOpen(body []rune) (int, bool) {
 	return ticks, true
 }
 
-// fenceClose implements /^ {0,3}`{n,}[ \t]*$/ over a line body.
+// fenceClose matches a closing delimiter line: any leading horizontal
+// whitespace and a backtick run at least as long as the opener. Step 2.6 has
+// already removed anything that could follow it.
 func fenceClose(body []rune, n int) bool {
 	i := 0
-	for i < len(body) && body[i] == ' ' {
+	for i < len(body) && horizontalWhiteSpace[body[i]] {
 		i++
-	}
-	if i > 3 {
-		return false
 	}
 	ticks := 0
 	for i+ticks < len(body) && body[i+ticks] == '`' {
@@ -351,7 +402,7 @@ func fenceClose(body []rune, n int) bool {
 		return false
 	}
 	for _, r := range body[i+ticks:] {
-		if r != ' ' && r != '\t' {
+		if !horizontalWhiteSpace[r] {
 			return false
 		}
 	}
@@ -373,26 +424,23 @@ func fencedSpans(text []rune) []span {
 		for j < len(starts) && !fenceClose(lineBody(text[starts[j]:ends[j]]), ticks) {
 			j++
 		}
-		if j == len(starts) {
-			// No closing line, so the pattern is not present. A run of
-			// backticks in prose is prose. Failing to match is not an error;
-			// human text has no syntax to get wrong.
-			i++
-			continue
-		}
-
 		// Take the line ending that precedes the opening line, so the fence
 		// still starts a line after the prose around it has been flattened.
 		start := starts[i]
-		if start >= 2 && text[start-2] == '\r' && text[start-1] == '\n' {
-			start -= 2
-		} else if start >= 1 && (text[start-1] == '\r' || text[start-1] == '\n') {
+		if start >= 1 && text[start-1] == '\n' {
 			start--
 		}
 		if n := len(spans); n > 0 && spans[n-1].end > start {
 			start = spans[n-1].end
 		}
-		spans = append(spans, span{start, ends[j]})
+		if j == len(starts) {
+			// An opener with no closer runs to the end of the input rather
+			// than decaying into prose. Truncation is ordinary, and under the
+			// old rule losing one line reinterpreted a whole block.
+			spans = append(spans, span{start, len(text), fenceSpan})
+			break
+		}
+		spans = append(spans, span{start, ends[j], fenceSpan})
 		i = j + 1
 	}
 	return spans
@@ -443,25 +491,108 @@ func urlEnd(text []rune, start, limit int) int {
 	return i
 }
 
-// urlStart implements /https?:\/\//i with ASCII-only case folding, and returns
-// the offset just past the scheme. A Unicode case fold would make U+017F LATIN
-// SMALL LETTER LONG S match the "s" of "https", and RFC 3986 section 3.1 allows
-// only ASCII letters in a scheme, so that match is simply wrong.
-func urlStart(text []rune, i, limit int) (int, bool) {
-	for _, scheme := range [...]string{"https://", "http://"} {
-		if i+len(scheme) > limit {
-			continue
+func isAlpha(r rune) bool {
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+}
+
+func isSchemeChar(r rune) bool {
+	return isAlpha(r) || (r >= '0' && r <= '9') || r == '+' || r == '-' || r == '.'
+}
+
+// isTokenChar reports whether r may appear in an RFC 2045 token: printable
+// ASCII other than space, control characters and the tspecials ()<>@,;:\"/[]?=
+func isTokenChar(r rune) bool {
+	if r <= ' ' || r >= 0x7F {
+		return false
+	}
+	switch r {
+	case '(', ')', '<', '>', '@', ',', ';', ':', '\\', '"', '/', '[', ']', '?', '=':
+		return false
+	}
+	return true
+}
+
+// literal matches an ASCII literal case-insensitively, ASCII-only.
+func literal(text []rune, i, limit int, want string) (int, bool) {
+	if i+len(want) > limit {
+		return 0, false
+	}
+	for k := 0; k < len(want); k++ {
+		if asciiLower(text[i+k]) != rune(want[k]) {
+			return 0, false
 		}
-		matched := true
-		for k := 0; k < len(scheme); k++ {
-			if asciiLower(text[i+k]) != rune(scheme[k]) {
-				matched = false
-				break
+	}
+	return i + len(want), true
+}
+
+func runOfTokens(text []rune, i, limit int) (int, bool) {
+	start := i
+	for i < limit && isTokenChar(text[i]) {
+		i++
+	}
+	return i, i > start
+}
+
+// dataHeader matches an RFC 2397 header: an optional type/subtype, zero or
+// more ";attribute=value" parameters, an optional ";base64", and the mandatory
+// comma. It returns the offset just past the comma.
+func dataHeader(text []rune, i, limit int) (int, bool) {
+	if j, ok := runOfTokens(text, i, limit); ok && j < limit && text[j] == '/' {
+		if k, ok := runOfTokens(text, j+1, limit); ok {
+			i = k
+		}
+	}
+	for i < limit && text[i] == ';' {
+		if j, ok := literal(text, i, limit, ";base64"); ok && j < limit && text[j] == ',' {
+			return j + 1, true
+		}
+		j, ok := runOfTokens(text, i+1, limit)
+		if !ok || j >= limit || text[j] != '=' {
+			return 0, false
+		}
+		k, ok := runOfTokens(text, j+1, limit)
+		if !ok {
+			return 0, false
+		}
+		i = k
+	}
+	if i < limit && text[i] == ',' {
+		return i + 1, true
+	}
+	return 0, false
+}
+
+// urlStart recognizes the three forms of URI span and returns the offset just
+// past the recognized prefix. Any scheme followed by "://" is safe because
+// "://" does not occur in prose; a bare scheme is not, because "note:" and
+// "here is the data:" are ordinary English. The two bare schemes admitted here
+// carry structure a sentence does not: mailto: must reach an "@" before any
+// whitespace, and data: must present a well-formed RFC 2397 header.
+//
+// Comparison is ASCII-only throughout. A Unicode case fold would make U+017F
+// LATIN SMALL LETTER LONG S match the "s" of "https", and RFC 3986 section 3.1
+// allows only ASCII letters in a scheme, so that match is simply wrong.
+func urlStart(text []rune, i, limit int) (int, bool) {
+	if !isAlpha(text[i]) {
+		return 0, false
+	}
+	j := i + 1
+	for j < limit && isSchemeChar(text[j]) {
+		j++
+	}
+	if k, ok := literal(text, j, limit, "://"); ok {
+		return k, true
+	}
+	if k, ok := literal(text, i, limit, "mailto:"); ok {
+		for n := k; n < limit && !whiteSpace[text[n]]; n++ {
+			if text[n] == '@' {
+				return k, true
 			}
 		}
-		if matched {
-			return i + len(scheme), true
-		}
+		return 0, false
+	}
+	if k, ok := literal(text, i, limit, "data:"); ok {
+		return dataHeader(text, k, limit)
 	}
 	return 0, false
 }
@@ -485,7 +616,7 @@ func inlineAndURLSpans(text []rune, start, end int) []span {
 			runLength := runEnd - i
 			if closing, ok := matchingBacktickRun(text, runEnd, end, runLength); ok {
 				spanEnd := closing + runLength
-				spans = append(spans, span{i, spanEnd})
+				spans = append(spans, span{i, spanEnd, inlineSpan})
 				i = spanEnd
 				continue
 			}
@@ -501,7 +632,7 @@ func inlineAndURLSpans(text []rune, start, end int) []span {
 
 		if schemeEnd, ok := urlStart(text, i, end); ok {
 			spanEnd := urlEnd(text, schemeEnd, end)
-			spans = append(spans, span{i, spanEnd})
+			spans = append(spans, span{i, spanEnd, urlSpan})
 			i = spanEnd
 			continue
 		}
@@ -527,6 +658,261 @@ func opaqueSpans(text []rune) []span {
 
 // protect replaces every opaque span with a placeholder that is neither
 // whitespace nor punctuation, and that the input provably cannot spell.
+// removeArtifacts is step 2.4: drop the byte order mark. U+FEFF is a
+// serialization signature rather than writing, so it is not text and does not
+// belong to the author. Removing it here, before recognition, is why it also
+// comes out of a protected span.
+func removeArtifacts(text []rune) []rune {
+	out := text[:0:0]
+	for _, r := range text {
+		if !removedArtifacts[r] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// normalizeLineTerminators is step 2.5: every line terminator becomes LF.
+// Prose is unaffected, because step 6.2 collapses any of them to one space
+// either way. What changes is the interior of a protected span, where CRLF and
+// LF used to give different bytes for the same block; MIME text/plain is
+// CRLF-canonical, so email converts as a matter of course.
+func normalizeLineTerminators(text []rune) []rune {
+	out := make([]rune, 0, len(text))
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\r' && i+1 < len(text) && text[i+1] == '\n' {
+			out = append(out, '\n')
+			i++
+			continue
+		}
+		if lineTerminators[text[i]] {
+			out = append(out, '\n')
+			continue
+		}
+		out = append(out, text[i])
+	}
+	return out
+}
+
+// rightTrimLines is step 2.6: remove the whole run of horizontal whitespace
+// that precedes a line ending or the end of the input. Editors trim on save,
+// mailers pad, chat clients strip, and nobody can see any of it.
+func rightTrimLines(text []rune) []rune {
+	out := make([]rune, 0, len(text))
+	pending := make([]rune, 0, 8)
+	for _, r := range text {
+		if horizontalWhiteSpace[r] {
+			pending = append(pending, r)
+			continue
+		}
+		// A pending run is emitted verbatim unless a line ending follows it,
+		// in which case it is what this step exists to remove. Emitting spaces
+		// instead of the original runes would turn a tab inside an inline code
+		// span into a space, which is not this step's business.
+		if r != '\n' {
+			out = append(out, pending...)
+		}
+		pending = pending[:0]
+		out = append(out, r)
+	}
+	// A run at the end of the input precedes the end of the input, so it goes.
+	return out
+}
+
+// normalizeQuotation is step 6.1.
+//
+// The marker first: a leading run of horizontal whitespace, a ">", and every
+// following character that is horizontal whitespace or another ">" all become
+// a single ">". A line that is nothing but the prefix is dropped, as is a
+// blank line, because mailers disagree about whether a blank quoted line keeps
+// its marker and nothing downstream would have preserved it.
+//
+// Then the structure. Consecutive lines of the same kind are joined, so the
+// number of markers stops tracking how a client wrapped the text; and the line
+// ending is kept wherever the kind changes, so a quoted question cannot absorb
+// the reply beneath it. Marking only where a quotation starts would be worse
+// than useless: it would look as though quotation were tracked while
+// "> Did you murder that man?" followed by "No!" still reached the same bytes
+// as "> Did you murder that man? No!", as every version before 3.17 did.
+func normalizeQuotation(text string) string {
+	var parts []string
+	var current []string
+	quoted, haveKind := false, false
+	for _, line := range strings.Split(text, "\n") {
+		runes := []rune(line)
+		i := 0
+		for i < len(runes) && horizontalWhiteSpace[runes[i]] {
+			i++
+		}
+		isQuoted := i < len(runes) && runes[i] == '>'
+		if isQuoted {
+			i++
+			for i < len(runes) && (runes[i] == '>' || horizontalWhiteSpace[runes[i]]) {
+				i++
+			}
+		} else {
+			i = 0
+		}
+		body := string(runes[i:])
+		if strings.TrimSpace(body) == "" {
+			continue
+		}
+		if haveKind && isQuoted != quoted {
+			parts = append(parts, marker(quoted)+strings.Join(current, " "))
+			current = nil
+		}
+		quoted, haveKind = isQuoted, true
+		current = append(current, body)
+	}
+	if haveKind {
+		parts = append(parts, marker(quoted)+strings.Join(current, " "))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func marker(quoted bool) string {
+	if quoted {
+		return ">"
+	}
+	return ""
+}
+
+// normalizeFenceIndent strips leading horizontal whitespace from a fence's
+// delimiter lines. Only the two lines that are pure syntax; indentation inside
+// the block is content -- it is what Python means -- and is never touched.
+func normalizeFenceIndent(body string) string {
+	runes := []rune(body)
+	starts, ends := lineStartsAndEnds(runes)
+	fenceLength, haveFence := 0, false
+	var b strings.Builder
+	for i := range starts {
+		line := runes[starts[i]:ends[i]]
+		core := lineBody(line)
+		if !haveFence {
+			if ticks, ok := fenceOpen(core); ok {
+				fenceLength, haveFence = ticks, true
+				line = dropLeadingHorizontal(line)
+			}
+			b.WriteString(string(line))
+			continue
+		}
+		if i == len(starts)-1 && fenceClose(core, fenceLength) {
+			line = dropLeadingHorizontal(line)
+		}
+		b.WriteString(string(line))
+	}
+	return b.String()
+}
+
+func dropLeadingHorizontal(line []rune) []rune {
+	i := 0
+	for i < len(line) && horizontalWhiteSpace[line[i]] {
+		i++
+	}
+	return line[i:]
+}
+
+// foldInlineNewlines turns each run of line endings inside an inline span,
+// together with any horizontal whitespace after it, into one space. That is
+// what makes an inline span rewrap-safe, and it is the difference between the
+// two backtick-delimited kinds: an inline span carries no line structure, a
+// fence does.
+func foldInlineNewlines(body string) string {
+	runes := []rune(body)
+	var b strings.Builder
+	for i := 0; i < len(runes); {
+		if runes[i] != '\n' {
+			b.WriteRune(runes[i])
+			i++
+			continue
+		}
+		for i < len(runes) && (runes[i] == '\n' || horizontalWhiteSpace[runes[i]]) {
+			i++
+		}
+		b.WriteRune(' ')
+	}
+	return b.String()
+}
+
+func asciiLowerString(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		b.WriteRune(asciiLower(r))
+	}
+	return b.String()
+}
+
+// lowerDataHeader lowercases what RFC 2045 section 5.1 defines as
+// case-insensitive and nothing else: the type, the subtype and each
+// parameter's attribute NAME. A value is not case-insensitive in general --
+// charset happens to be, but that is RFC 2046 speaking about one parameter --
+// so a value is reproduced exactly. ";base64" is an attribute name with no
+// value and folds with them.
+func lowerDataHeader(header string) string {
+	parts := strings.Split(header, ";")
+	for i, part := range parts {
+		if i == 0 {
+			parts[i] = asciiLowerString(part)
+			continue
+		}
+		if eq := strings.Index(part, "="); eq >= 0 {
+			parts[i] = asciiLowerString(part[:eq]) + part[eq:]
+		} else {
+			parts[i] = asciiLowerString(part)
+		}
+	}
+	return strings.Join(parts, ";")
+}
+
+// normalizeURI lowercases the scheme, and the host of a URI that has an
+// authority; RFC 3986 defines both as case-insensitive. A data: URI carries
+// its own case-insensitive fields, defined by RFC 2045. Nothing else folds.
+func normalizeURI(body string) string {
+	if i := strings.Index(body, "://"); i > 0 {
+		scheme := body[:i]
+		rest := body[i+3:]
+		end := strings.IndexAny(rest, "/?#")
+		if end < 0 {
+			end = len(rest)
+		}
+		authority, tail := rest[:end], rest[end:]
+		userinfo := ""
+		if at := strings.LastIndex(authority, "@"); at >= 0 {
+			userinfo, authority = authority[:at+1], authority[at+1:]
+		}
+		return asciiLowerString(scheme) + "://" + userinfo + asciiLowerString(authority) + tail
+	}
+	colon := strings.Index(body, ":")
+	if colon < 0 {
+		return body
+	}
+	scheme := asciiLowerString(body[:colon])
+	if scheme != "data" {
+		return scheme + body[colon:]
+	}
+	comma := strings.Index(body[colon+1:], ",")
+	if comma < 0 {
+		return scheme + body[colon:]
+	}
+	comma += colon + 1
+	return scheme + ":" + lowerDataHeader(body[colon+1:comma]) + body[comma:]
+}
+
+// normalizeSpan: a protected span is not untouched bytes. It is text
+// canonicalized under a reduced rule set, and the line is that line structure
+// belongs to the channel while everything else belongs to the author.
+func normalizeSpan(kind spanKind, body string) string {
+	switch kind {
+	case fenceSpan:
+		return normalizeFenceIndent(body)
+	case inlineSpan:
+		return foldInlineNewlines(body)
+	case urlSpan:
+		return normalizeURI(body)
+	}
+	return body
+}
+
 func protect(text []rune) (string, map[string]string) {
 	spans := opaqueSpans(text)
 	if len(spans) == 0 {
@@ -539,7 +925,7 @@ func protect(text []rune) (string, map[string]string) {
 		marker := string(markerOpen) + "CQT" + strconv.Itoa(number) + string(markerClose)
 		b.WriteString(string(text[cursor:s.start]))
 		b.WriteString(marker)
-		protected[marker] = string(text[s.start:s.end])
+		protected[marker] = normalizeSpan(s.kind, string(text[s.start:s.end]))
 		cursor = s.end
 	}
 	b.WriteString(string(text[cursor:]))
@@ -581,21 +967,38 @@ func restore(text string, protected map[string]string) string {
 
 // collapseWhitespace is step 6: replace each run of White_Space with a single
 // U+0020, then trim leading and trailing spaces.
+// collapseWhitespace is step 6.2: a run of whitespace becomes one space, or
+// one line ending if the run contains one. Step 6.1 has already joined every
+// line within a passage, so the only line endings left at this point are the
+// boundaries it chose to keep, and those carry meaning a space would destroy.
+// Step 6.3 then trims both from the edges.
 func collapseWhitespace(text string) string {
 	var b strings.Builder
-	inWhitespace := false
+	runLength, runHasNewline := 0, false
+	flush := func() {
+		if runLength == 0 {
+			return
+		}
+		if runHasNewline {
+			b.WriteRune('\n')
+		} else {
+			b.WriteRune(' ')
+		}
+		runLength, runHasNewline = 0, false
+	}
 	for _, r := range text {
 		if whiteSpace[r] {
-			if !inWhitespace {
-				b.WriteRune(' ')
+			runLength++
+			if r == '\n' {
+				runHasNewline = true
 			}
-			inWhitespace = true
 			continue
 		}
+		flush()
 		b.WriteRune(r)
-		inWhitespace = false
 	}
-	return strings.Trim(b.String(), " ")
+	flush()
+	return strings.Trim(b.String(), " \n")
 }
 
 // removeInvisibles is step 5: drop the four layout-only characters.
@@ -993,6 +1396,7 @@ func nfkc(text string) string {
 func canonicalizeProse(text string) string {
 	text = nfkc(text)
 	text = removeInvisibles(text)
+	text = normalizeQuotation(text)
 	text = collapseWhitespace(text)
 	text = mapRunes(text, func(r rune) (rune, bool) {
 		if DashPunctuation[r] {
@@ -1018,17 +1422,21 @@ func canonicalizeProse(text string) string {
 	for _, pair := range asciiAutocorrectPairs {
 		text = strings.ReplaceAll(text, pair.from, pair.to)
 	}
+	text = applyGuardedEmoticons(text)
 	text = removeSpacesAdjacentToPunctuation(text)
 	text = strings.ReplaceAll(text, "&", " & ")
 	return collapseWhitespace(text)
 }
 
-// Algorithm217 returns the CQT 2.17 canonical UTF-8 byte stream for plaintext.
-func Algorithm217(plaintext string) []byte {
+// Algorithm317 returns the CQT 3.17 canonical UTF-8 byte stream for plaintext.
+func Algorithm317(plaintext string) []byte {
 	// Strip what cannot be plain text BEFORE recognizing anything. Otherwise an
 	// override hidden inside a fence or a URL is copied through untouched, and
 	// the span becomes a channel for exactly the spoof this removal prevents.
 	runes := stripDisallowed(decode(plaintext))
+	runes = removeArtifacts(runes)
+	runes = normalizeLineTerminators(runes)
+	runes = rightTrimLines(runes)
 	text, protected := protect(runes)
 	text = canonicalizeProse(text)
 	return []byte(restore(text, protected))

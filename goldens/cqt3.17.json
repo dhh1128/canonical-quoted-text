@@ -1,0 +1,1052 @@
+{
+  "algorithm": "cqt3.17",
+  "unicode_version": "17.0.0",
+  "encoding": "UTF-8",
+  "cases": [
+    {
+      "id": "identity-ascii",
+      "input": "hello world",
+      "output": "hello world"
+    },
+    {
+      "id": "empty",
+      "input": "",
+      "output": ""
+    },
+    {
+      "id": "strip-override-in-prose",
+      "input": "safe‮not safe‬",
+      "output": "safenot safe‬"
+    },
+    {
+      "id": "override-inside-fence-is-still-stripped",
+      "input": "```text\nsafe‮not safe‬\n```",
+      "output": "```text\nsafenot safe‬\n```"
+    },
+    {
+      "id": "override-inside-url-is-still-stripped",
+      "input": "https://example.test/safe‮not-safe‬",
+      "output": "https://example.test/safenot-safe‬"
+    },
+    {
+      "id": "unassigned-code-point-passes-through",
+      "input": "assigned͸unassigned",
+      "output": "assigned͸unassigned"
+    },
+    {
+      "id": "noncharacter-passes-through",
+      "input": "before﷐after",
+      "output": "before﷐after"
+    },
+    {
+      "id": "strip-control-character",
+      "input": "before\u0000after",
+      "output": "beforeafter"
+    },
+    {
+      "id": "unclosed-fence-protects-to-end-of-input",
+      "input": "before\n```python\nprint('oops')",
+      "output": "before\n```python\nprint('oops')"
+    },
+    {
+      "id": "backticks-split-by-soft-hyphens-are-prose",
+      "input": "`­`­`",
+      "output": "`­``"
+    },
+    {
+      "id": "fenced-code-language-is-opaque",
+      "input": "Before\n```python\nx = 'A  &  B--C'\r\n```\nAfter",
+      "output": "Before\n```python\nx = 'A  &  B--C'\n```\nAfter"
+    },
+    {
+      "id": "fenced-code-invisibles-are-opaque",
+      "input": "```text\na​b﻿c\n```",
+      "output": "```text\na​bc\n```"
+    },
+    {
+      "id": "long-fence-is-opaque",
+      "input": "````text\ninside ``` remains data\n````",
+      "output": "````text\ninside ``` remains data\n````"
+    },
+    {
+      "id": "very-long-fence-run",
+      "input": "``````````````````````````````````\ncontent\n``````````````````````````````````",
+      "output": "``````````````````````````````````\ncontent\n``````````````````````````````````"
+    },
+    {
+      "id": "consecutive-fences-share-one-boundary-line-ending",
+      "input": "```\none\n```\n```\ntwo\n```",
+      "output": "```\none\n```\n```\ntwo\n```"
+    },
+    {
+      "id": "unicode-separators-form-fence-lines",
+      "input": "```text inside ````",
+      "output": "```text\ninside\n````"
+    },
+    {
+      "id": "mixed-line-endings-in-fence",
+      "input": "```\r\ncontent\rline2\n```",
+      "output": "```\ncontent\nline2\n```"
+    },
+    {
+      "id": "soft-hyphen-inside-fence-preserved",
+      "input": "```\n­\n```",
+      "output": "```\n­\n```"
+    },
+    {
+      "id": "inline-code-is-opaque",
+      "input": "Use `A  &  B--C` here and ``a ` b`` there.",
+      "output": "Use `A  &  B--C` here and ``a ` b`` there."
+    },
+    {
+      "id": "inline-code-unmatched-is-prose",
+      "input": "An unmatched ` mark & value",
+      "output": "An unmatched ` mark & value"
+    },
+    {
+      "id": "unmatched-backtick-run-is-wholly-prose",
+      "input": "a  ```  ``",
+      "output": "a ``` ``"
+    },
+    {
+      "id": "unmatched-longer-backtick-run-is-wholly-prose",
+      "input": "a  ````  ```",
+      "output": "a ```` ```"
+    },
+    {
+      "id": "matched-inline-run-still-protects",
+      "input": "use `a  b` here",
+      "output": "use `a  b` here"
+    },
+    {
+      "id": "empty-inline-code-span",
+      "input": "Use `` in code",
+      "output": "Use `` in code"
+    },
+    {
+      "id": "whitespace-only-inline-code-span",
+      "input": "Use ` \t` in code",
+      "output": "Use ` \t` in code"
+    },
+    {
+      "id": "url-query-is-opaque",
+      "input": "Visit https://example.test/a--b?q=x&lang=en now.",
+      "output": "Visit https://example.test/a--b?q=x&lang=en now."
+    },
+    {
+      "id": "url-unicode-is-opaque",
+      "input": "https://example.test/ℌ/Ａ＆Ｂ",
+      "output": "https://example.test/ℌ/Ａ＆Ｂ"
+    },
+    {
+      "id": "url-invisibles-are-opaque",
+      "input": "https://example.test/a​b﻿c",
+      "output": "https://example.test/a​bc"
+    },
+    {
+      "id": "invisible-inside-url-is-preserved",
+      "input": "https://example.test/a​b",
+      "output": "https://example.test/a​b"
+    },
+    {
+      "id": "url-balanced-parentheses",
+      "input": "See https://example.test/Foo_(bar).",
+      "output": "See https://example.test/Foo_(bar)."
+    },
+    {
+      "id": "url-unmatched-closing-parenthesis-ends-span",
+      "input": "(https://example.test/a--b) & more",
+      "output": "(https://example.test/a--b) & more"
+    },
+    {
+      "id": "url-scheme-case-and-terminal-punctuation-are-opaque",
+      "input": "HTTPS://example.test/a--b....",
+      "output": "https://example.test/a--b...."
+    },
+    {
+      "id": "url-scheme-ascii-case-is-insensitive",
+      "input": "HtTpS://example.test/a--b",
+      "output": "https://example.test/a--b"
+    },
+    {
+      "id": "long-s-scheme-is-not-a-url",
+      "input": "httpſ://example.test/a--b",
+      "output": "https://example.test/a-b"
+    },
+    {
+      "id": "markdown-link-url-is-opaque",
+      "input": "Read [the docs](https://example.test/a--b?x=1&y=2).",
+      "output": "Read [the docs](https://example.test/a--b?x=1&y=2)."
+    },
+    {
+      "id": "nfkc-compatibility",
+      "input": "ℌℍ ①ｶ︷︸⁹₉㌀¼ǆ",
+      "output": "HH 1カ{}99アパート1/4dž"
+    },
+    {
+      "id": "unicode-17-nfkc",
+      "input": "꟱",
+      "output": "S"
+    },
+    {
+      "id": "remove-layout-invisibles",
+      "input": "soft­hyphen zero​width word⁠join bom﻿here",
+      "output": "softhyphen zerowidth wordjoin bomhere"
+    },
+    {
+      "id": "preserve-join-controls",
+      "input": "a‌b a‍b",
+      "output": "a‌b a‍b"
+    },
+    {
+      "id": "zwsp-kept-between-thai",
+      "input": "ปาก​กา",
+      "output": "ปาก​กา"
+    },
+    {
+      "id": "zwsp-kept-between-khmer",
+      "input": "ក​ក",
+      "output": "ក​ក"
+    },
+    {
+      "id": "zwsp-removed-between-latin",
+      "input": "a​b",
+      "output": "ab"
+    },
+    {
+      "id": "zwsp-removed-between-cjk",
+      "input": "一​一",
+      "output": "一一"
+    },
+    {
+      "id": "zwsp-removed-at-script-boundary",
+      "input": "a​ก",
+      "output": "aก"
+    },
+    {
+      "id": "whitespace-and-line-loss",
+      "input": "  one\r\n\t two  three  ",
+      "output": "one two three"
+    },
+    {
+      "id": "whitespace-only-input",
+      "input": "　  　",
+      "output": ""
+    },
+    {
+      "id": "mixed-whitespace-run-collapses",
+      "input": "a\t 　b",
+      "output": "a b"
+    },
+    {
+      "id": "exotic-leading-trailing-whitespace-trimmed",
+      "input": " 　a  ",
+      "output": "a"
+    },
+    {
+      "id": "unicode-17-dashes",
+      "input": "a𐵮b𐺭c",
+      "output": "a-b-c"
+    },
+    {
+      "id": "dash-and-ellipsis",
+      "input": "one——two----three……....",
+      "output": "one-two-three..."
+    },
+    {
+      "id": "dash-keeps-its-spaces",
+      "input": "a — b",
+      "output": "a - b"
+    },
+    {
+      "id": "quotes-cjk-and-fraction",
+      "input": "“one” 、 《two》 。 1⁄2",
+      "output": "'one', 'two'. 1/2"
+    },
+    {
+      "id": "apostrophe-keeps-its-spaces",
+      "input": "say “hi” there",
+      "output": "say 'hi' there"
+    },
+    {
+      "id": "punctuation-attaches-left",
+      "input": "Really? Yes. Truly!",
+      "output": "Really? Yes. Truly!"
+    },
+    {
+      "id": "punctuation-attaches-right",
+      "input": "a (parenthetical) aside",
+      "output": "a (parenthetical) aside"
+    },
+    {
+      "id": "solidus-is-not-terminal-punctuation",
+      "input": "a / b",
+      "output": "a / b"
+    },
+    {
+      "id": "danda-sentence-spacing-preserved",
+      "input": "राम। श्याम",
+      "output": "राम। श्याम"
+    },
+    {
+      "id": "arabic-comma-spacing-preserved",
+      "input": "مرحبا، عالم",
+      "output": "مرحبا، عالم"
+    },
+    {
+      "id": "cjk-full-stop-spacing-preserved",
+      "input": "你好。 再见",
+      "output": "你好. 再见"
+    },
+    {
+      "id": "french-nbsp-before-bang-still-converges",
+      "input": "Voici un exemple !",
+      "output": "Voici un exemple!"
+    },
+    {
+      "id": "autocorrect-emoji-and-emoticons",
+      "input": "😊 :) :-) 😐 :| :-| ☹️ :( :-( 😃 :D :-D 😝 :p :-p 😲 :o :-o 😉 ;) ;-) ❤️ <3 💔 </3",
+      "output": ":-):-):-):-|:-|:-|:-(:-(:-(:-D:-D:-D:-p:-p:-p:-o:-o:-o;-);-);-) <3 <3 </3 </3"
+    },
+    {
+      "id": "autocorrect-symbols-and-bullet",
+      "input": "© (c) ® (R) • *",
+      "output": "(c) (c) (R) (R) * *"
+    },
+    {
+      "id": "emoji-and-emoticon-spellings-converge",
+      "input": "hello 😊",
+      "output": "hello:-)"
+    },
+    {
+      "id": "emoticon-convergence-ascii-form",
+      "input": "hello :)",
+      "output": "hello:-)"
+    },
+    {
+      "id": "single-pass-leaves-four-dots",
+      "input": "a- -b . . . .",
+      "output": "a- -b...."
+    },
+    {
+      "id": "autocorrect-punctuation-fixed-point",
+      "input": ": ©",
+      "output": ": (c)"
+    },
+    {
+      "id": "single-pass-leaves-spaced-emoticon",
+      "input": ": )",
+      "output": ":)"
+    },
+    {
+      "id": "ampersand-spacing",
+      "input": "A&B / A & B / A  ＆  B / AT&T",
+      "output": "A & B / A & B / A & B / AT & T"
+    },
+    {
+      "id": "url-span-grows-past-spaced-punctuation",
+      "input": "see https://example.test/a , then",
+      "output": "see https://example.test/a, then"
+    },
+    {
+      "id": "url-span-grows-french-spaced-bang",
+      "input": "voir https://example.test/a !",
+      "output": "voir https://example.test/a!"
+    },
+    {
+      "id": "url-span-grows-danda",
+      "input": "राम https://example.test/a ।",
+      "output": "राम https://example.test/a।"
+    },
+    {
+      "id": "zwsp-in-scheme-is-not-a-url",
+      "input": "http​://example.test/a--b",
+      "output": "http://example.test/a-b"
+    },
+    {
+      "id": "soft-hyphen-in-scheme-is-not-a-url",
+      "input": "http­://example.test/a--b",
+      "output": "http://example.test/a-b"
+    },
+    {
+      "id": "word-joiner-in-scheme-is-not-a-url",
+      "input": "http⁠://example.test/a--b",
+      "output": "http://example.test/a-b"
+    },
+    {
+      "id": "zwnbsp-in-scheme-is-not-a-url",
+      "input": "http﻿://example.test/a--b",
+      "output": "http://example.test/a--b"
+    },
+    {
+      "id": "fullwidth-scheme-is-not-a-url",
+      "input": "ｈｔｔｐｓ：／／ex/a--b",
+      "output": "https://ex/a-b"
+    },
+    {
+      "id": "fullwidth-colon-solidus-is-not-a-url",
+      "input": "https：／／example.test/a--b",
+      "output": "https://example.test/a-b"
+    },
+    {
+      "id": "fullwidth-graves-are-not-inline-code",
+      "input": "x ｀a  b｀ y",
+      "output": "x `a b` y"
+    },
+    {
+      "id": "zwsp-kept-between-astral-ahom",
+      "input": "𑜀​𑜀",
+      "output": "𑜀​𑜀"
+    },
+    {
+      "id": "zwsp-between-thai-pair-both-removed",
+      "input": "ก​​ก",
+      "output": "กก"
+    },
+    {
+      "id": "combining-class-changed-in-unicode-17",
+      "input": "a᫝́b",
+      "output": "á᫝b"
+    },
+    {
+      "id": "combining-class-arabic-mark",
+      "input": "a𐻺́b",
+      "output": "á𐻺b"
+    },
+    {
+      "id": "forged-marker-is-ordinary-text",
+      "input": "﷐CQT0﷯ alone",
+      "output": "﷐CQT0﷯ alone"
+    },
+    {
+      "id": "forged-marker-beside-a-real-span",
+      "input": "`code` and ﷐CQT0﷯ here",
+      "output": "`code` and ﷐CQT0﷯ here"
+    },
+    {
+      "id": "variation-selector-absorbed-copyright",
+      "input": "©️",
+      "output": "(c)"
+    },
+    {
+      "id": "variation-selector-absorbed-emoji",
+      "input": "😊️",
+      "output": ":-)"
+    },
+    {
+      "id": "variation-selector-absorbed-bullet",
+      "input": "•️",
+      "output": "*"
+    },
+    {
+      "id": "url-ends-at-backtick-which-opens-a-span",
+      "input": "http://a.test/x`y  z`",
+      "output": "http://a.test/x`y  z`"
+    },
+    {
+      "id": "failed-fence-restarts-on-the-next-line",
+      "input": "````x--y\n```a--b\n```\n",
+      "output": "````x--y\n```a--b\n```\n"
+    },
+    {
+      "id": "emoji-with-variation-selector-converges",
+      "input": "hello 😊️",
+      "output": "hello:-)"
+    },
+    {
+      "id": "doubled-variation-selector-leaves-one",
+      "input": "©️️",
+      "output": "(c)️"
+    },
+    {
+      "id": "text-presentation-selector-absorbed",
+      "input": "©︎",
+      "output": "(c)"
+    },
+    {
+      "id": "text-presentation-selector-on-frowny",
+      "input": "☹︎",
+      "output": ":-("
+    },
+    {
+      "id": "astral-starter-survives-normalization",
+      "input": "a𐁁́",
+      "output": "a𐁁́"
+    },
+    {
+      "id": "astral-starter-between-letters",
+      "input": "x𐁁y",
+      "output": "x𐁁y"
+    },
+    {
+      "id": "compose-across-a-decomposed-mark",
+      "input": "áཱི",
+      "output": "áཱི"
+    },
+    {
+      "id": "hebrew-letter-with-combining-dot",
+      "input": "ג̇",
+      "output": "ג̇"
+    },
+    {
+      "id": "hebrew-final-kaf-with-combining-dot",
+      "input": "ך̇",
+      "output": "ך̇"
+    },
+    {
+      "id": "worked-example-typography",
+      "input": "“Le rapport ﬁnal — R&D, 1⁄2 fait — coûte 3--4 k€ ; voir https://example.test/a--b?q=1&r=2 … et c’est prêt !” 😊  日本語も：「テスト」。  राम। श्याम",
+      "output": "'Le rapport final - R & D, 1/2 fait - coûte 3-4 k€; voir https://example.test/a--b?q=1&r=2... et c'est prêt!':-) 日本語も:'テスト'. राम। श्याम"
+    },
+    {
+      "id": "worked-example-quoting",
+      "input": "> I checked with the team and they say\n>the 14th is tight but possible.\nThen let's commit to it.\n\n  >> Shall I tell the customer?\nYes -- and cc me.",
+      "output": ">I checked with the team and they say the 14th is tight but possible.\nThen let's commit to it.\n>Shall I tell the customer?\nYes - and cc me."
+    },
+    {
+      "id": "worked-example-fences",
+      "input": "Run  it with `--dry-run  &  --verbose` first.\n```python\nsubprocess.run(\"ls  -l && pwd\", shell=True)   # don’t  do  this\n```\nI keep typing ``` and getting nothing.",
+      "output": "Run it with `--dry-run  &  --verbose` first.\n```python\nsubprocess.run(\"ls  -l && pwd\", shell=True)   # don’t  do  this\n```\nI keep typing ``` and getting nothing."
+    },
+    {
+      "id": "worked-example-invisibles",
+      "input": "ปาก​กา a​b  soft­hyphen  file‮gnp.exe  a\u0000b  क्‍ष",
+      "output": "ปาก​กา ab softhyphen filegnp.exe ab क्‍ष"
+    },
+    {
+      "id": "crlf-in-a-fence-normalizes-to-lf",
+      "input": "a\n```\nx  y\n```\nb",
+      "output": "a\n```\nx  y\n```\nb"
+    },
+    {
+      "id": "cr-in-a-fence-normalizes-to-lf",
+      "input": "a\r```\rx  y\r```\rb",
+      "output": "a\n```\nx  y\n```\nb"
+    },
+    {
+      "id": "crlf-and-lf-fences-agree",
+      "input": "a\r\n```\r\nx  y\r\n```\r\nb",
+      "output": "a\n```\nx  y\n```\nb"
+    },
+    {
+      "id": "nel-ends-a-line-for-fence-recognition",
+      "input": "a```x  y```b",
+      "output": "a\n```\nx  y\n```\nb"
+    },
+    {
+      "id": "line-separator-ends-a-line-for-fence-recognition",
+      "input": "a ``` x  y ``` b",
+      "output": "a\n```\nx  y\n```\nb"
+    },
+    {
+      "id": "trailing-whitespace-in-a-fence-removed",
+      "input": "```\nx   \ny\t\n```",
+      "output": "```\nx\ny\n```"
+    },
+    {
+      "id": "trailing-whitespace-on-a-fence-delimiter-removed",
+      "input": "```   \nx\n```  ",
+      "output": "```\nx\n```"
+    },
+    {
+      "id": "trailing-whitespace-in-an-inline-span-at-a-line-end",
+      "input": "see `a   \nb` now",
+      "output": "see `a b` now"
+    },
+    {
+      "id": "bom-removed-inside-a-fence",
+      "input": "```\nx﻿y\n```",
+      "output": "```\nxy\n```"
+    },
+    {
+      "id": "bom-removed-inside-a-url",
+      "input": "https://example.test/a﻿b",
+      "output": "https://example.test/ab"
+    },
+    {
+      "id": "bom-removed-inside-an-inline-span",
+      "input": "see `a﻿b` now",
+      "output": "see `ab` now"
+    },
+    {
+      "id": "zwsp-survives-inside-a-fence",
+      "input": "```\nx​y\n```",
+      "output": "```\nx​y\n```"
+    },
+    {
+      "id": "quote-depth-one-normalizes",
+      "input": "> alpha\n> beta",
+      "output": ">alpha beta"
+    },
+    {
+      "id": "quote-depth-two-collapses-to-one",
+      "input": ">> alpha\n>> beta",
+      "output": ">alpha beta"
+    },
+    {
+      "id": "quote-spaced-levels-collapse-to-one",
+      "input": "> > alpha\n> > beta",
+      "output": ">alpha beta"
+    },
+    {
+      "id": "quote-without-a-space-normalizes",
+      "input": ">alpha\n>beta",
+      "output": ">alpha beta"
+    },
+    {
+      "id": "quote-with-leading-indent-normalizes",
+      "input": "  > alpha\n  > beta",
+      "output": ">alpha beta"
+    },
+    {
+      "id": "quote-blank-line-marked-and-unmarked-agree-a",
+      "input": "> one\n>\n> two",
+      "output": ">one two"
+    },
+    {
+      "id": "quote-blank-line-marked-and-unmarked-agree-b",
+      "input": "> one\n\n> two",
+      "output": ">one two"
+    },
+    {
+      "id": "quoted-stays-distinct-from-unquoted",
+      "input": "> Should we ship?\nYes.",
+      "output": ">Should we ship?\nYes."
+    },
+    {
+      "id": "quote-normalization-does-not-reach-into-a-fence",
+      "input": "```\n>>> x = 1\n>>> x + 1\n2\n```",
+      "output": "```\n>>> x = 1\n>>> x + 1\n2\n```"
+    },
+    {
+      "id": "quote-normalization-does-not-reach-into-an-inline-span",
+      "input": "see `> SELECT 1;` now",
+      "output": "see `> SELECT 1;` now"
+    },
+    {
+      "id": "unclosed-fence-with-content-protects-to-end-of-input",
+      "input": "x\n```\na  b\n",
+      "output": "x\n```\na  b\n"
+    },
+    {
+      "id": "four-backtick-opener-not-closed-by-three",
+      "input": "see:\n````\nx  =  1\n```\ndone",
+      "output": "see:\n````\nx  =  1\n```\ndone"
+    },
+    {
+      "id": "inline-span-newline-folds-to-a-space",
+      "input": "see `--dry-run\n--verbose` now",
+      "output": "see `--dry-run --verbose` now"
+    },
+    {
+      "id": "inline-span-newline-and-indent-fold-to-one-space",
+      "input": "see `--dry-run\n   --verbose` now",
+      "output": "see `--dry-run --verbose` now"
+    },
+    {
+      "id": "inline-span-rewrap-matches-the-unwrapped-form",
+      "input": "see `--dry-run --verbose` now",
+      "output": "see `--dry-run --verbose` now"
+    },
+    {
+      "id": "fence-delimiter-indent-normalized-to-column-zero",
+      "input": "x\n   ```\na  b\n   ```\ny",
+      "output": "x\n```\na  b\n```\ny"
+    },
+    {
+      "id": "fence-delimiter-indent-beyond-three-is-still-a-fence",
+      "input": "x\n      ```\na  b\n      ```\ny",
+      "output": "x\n```\na  b\n```\ny"
+    },
+    {
+      "id": "fence-delimiter-indent-may-differ-between-the-two-lines",
+      "input": "x\n ```\na  b\n     ```\ny",
+      "output": "x\n```\na  b\n```\ny"
+    },
+    {
+      "id": "fence-content-indentation-is-preserved",
+      "input": "```\nif x:\n    return 1\n```",
+      "output": "```\nif x:\n    return 1\n```"
+    },
+    {
+      "id": "url-scheme-and-host-are-lowercased",
+      "input": "see HTTP://Example.TEST/A?b=C now",
+      "output": "see http://example.test/A?b=C now"
+    },
+    {
+      "id": "url-path-case-is-preserved",
+      "input": "https://example.test/CaseSensitive/Path",
+      "output": "https://example.test/CaseSensitive/Path"
+    },
+    {
+      "id": "url-userinfo-case-is-preserved",
+      "input": "see https://User@Example.test/A now",
+      "output": "see https://User@example.test/A now"
+    },
+    {
+      "id": "emoticon-guard-did-peer",
+      "input": "did:peer:2.Ez6LSt4Jscr227NFyuzKHT85haVE4AF",
+      "output": "did:peer:2.Ez6LSt4Jscr227NFyuzKHT85haVE4AF"
+    },
+    {
+      "id": "emoticon-guard-urn-oid",
+      "input": "urn:oid:2.16.840.1.113883.6.1",
+      "output": "urn:oid:2.16.840.1.113883.6.1"
+    },
+    {
+      "id": "emoticon-guard-cesr-verification-key",
+      "input": "did:keri:DKxy2sgzfplyr_tgwIxS19f2OchFHtLwPWD3v4oYimBx",
+      "output": "did:keri:DKxy2sgzfplyr_tgwIxS19f2OchFHtLwPWD3v4oYimBx"
+    },
+    {
+      "id": "emoticon-guard-hyphen-continuation",
+      "input": "did:p-foo",
+      "output": "did:p-foo"
+    },
+    {
+      "id": "emoticon-still-converts-before-a-space",
+      "input": "lol :p done",
+      "output": "lol:-p done"
+    },
+    {
+      "id": "emoticon-still-converts-at-end-of-input",
+      "input": "lol:p",
+      "output": "lol:-p"
+    },
+    {
+      "id": "quoted-question-does-not-absorb-the-reply",
+      "input": "> Did you murder that man?\nNo!\n\nGo away.",
+      "output": ">Did you murder that man?\nNo! Go away."
+    },
+    {
+      "id": "the-same-words-entirely-quoted-differ",
+      "input": "> Did you murder that man? No!\n\nGo away.",
+      "output": ">Did you murder that man? No!\nGo away."
+    },
+    {
+      "id": "quoted-lines-join-into-one-passage",
+      "input": "> Are you free Tuesday\n> and Wednesday?\nNo, only Tuesday.",
+      "output": ">Are you free Tuesday and Wednesday?\nNo, only Tuesday."
+    },
+    {
+      "id": "same-quotation-reflowed-onto-one-line",
+      "input": "> Are you free Tuesday and Wednesday?\nNo, only Tuesday.",
+      "output": ">Are you free Tuesday and Wednesday?\nNo, only Tuesday."
+    },
+    {
+      "id": "interleaved-reply-keeps-every-boundary",
+      "input": "> q1\na1\n> q2\na2",
+      "output": ">q1\na1\n>q2\na2"
+    },
+    {
+      "id": "quotation-at-the-end-of-the-input",
+      "input": "preamble\n> quoted",
+      "output": "preamble\n>quoted"
+    },
+    {
+      "id": "quotation-at-the-start-of-the-input",
+      "input": "> quoted\nreply",
+      "output": ">quoted\nreply"
+    },
+    {
+      "id": "unquoted-text-alone-has-no-line-ending",
+      "input": "alpha\nbeta\n\ngamma",
+      "output": "alpha beta gamma"
+    },
+    {
+      "id": "everything-quoted-has-no-line-ending",
+      "input": "> every line here\n> is quoted, so nothing separates them",
+      "output": ">every line here is quoted, so nothing separates them"
+    },
+    {
+      "id": "a-fence-between-quoted-and-unquoted",
+      "input": "> q\n```\nx  y\n```\nreply",
+      "output": ">q\n```\nx  y\n```\nreply"
+    },
+    {
+      "id": "uri-any-scheme-before-the-slashes",
+      "input": "see ftp://ftp.example.test/a--b?q=1&r=2 now",
+      "output": "see ftp://ftp.example.test/a--b?q=1&r=2 now"
+    },
+    {
+      "id": "uri-websocket-scheme",
+      "input": "ws://example.test/socket?a--b",
+      "output": "ws://example.test/socket?a--b"
+    },
+    {
+      "id": "uri-scheme-without-authority-is-lowercased",
+      "input": "DATA:TEXT/PLAIN,a--b",
+      "output": "data:text/plain,a--b"
+    },
+    {
+      "id": "mailto-with-an-address-is-protected",
+      "input": "write to mailto:a--b@x.test?subject=hi&body=yo now",
+      "output": "write to mailto:a--b@x.test?subject=hi&body=yo now"
+    },
+    {
+      "id": "mailto-without-an-address-is-prose",
+      "input": "mailto:abc,a--b",
+      "output": "mailto:abc,a-b"
+    },
+    {
+      "id": "data-url-with-a-mediatype",
+      "input": "data:text/plain,a--b",
+      "output": "data:text/plain,a--b"
+    },
+    {
+      "id": "data-url-with-an-empty-mediatype",
+      "input": "data:,a--b",
+      "output": "data:,a--b"
+    },
+    {
+      "id": "data-url-with-a-parameter",
+      "input": "data:text/plain;charset=utf-8,a--b",
+      "output": "data:text/plain;charset=utf-8,a--b"
+    },
+    {
+      "id": "data-url-base64",
+      "input": "data:text/plain;base64,YS0tYg==",
+      "output": "data:text/plain;base64,YS0tYg=="
+    },
+    {
+      "id": "data-url-without-a-slash-in-the-mediatype-is-prose",
+      "input": "data:abc,a--b",
+      "output": "data:abc,a-b"
+    },
+    {
+      "id": "data-url-with-a-bare-parameter-is-prose",
+      "input": "data:text/plain;q,a--b",
+      "output": "data:text/plain;q,a-b"
+    },
+    {
+      "id": "data-url-shaped-prose-is-prose",
+      "input": "Here is the data:42 rows, and a--b arrived.",
+      "output": "Here is the data:42 rows, and a-b arrived."
+    },
+    {
+      "id": "data-url-stops-at-a-raw-quote",
+      "input": "data:application/json,{\"a\":\"x--y\"}",
+      "output": "data:application/json,{'a':'x-y'}"
+    },
+    {
+      "id": "data-url-percent-encoded-payload-survives",
+      "input": "data:application/json,%7B%22a%22%3A%22x--y%22%7D",
+      "output": "data:application/json,%7B%22a%22%3A%22x--y%22%7D"
+    },
+    {
+      "id": "data-url-mediatype-case-folds",
+      "input": "DATA:TEXT/PLAIN,ABC",
+      "output": "data:text/plain,ABC"
+    },
+    {
+      "id": "data-url-base64-flag-case-folds",
+      "input": "data:TEXT/PLAIN;BASE64,YWJj",
+      "output": "data:text/plain;base64,YWJj"
+    },
+    {
+      "id": "data-url-parameter-name-folds-value-does-not",
+      "input": "data:Text/Plain;CharSet=UTF-8,Hi",
+      "output": "data:text/plain;charset=UTF-8,Hi"
+    },
+    {
+      "id": "data-url-parameters-without-a-mediatype",
+      "input": "data:;CHARSET=UTF-8,Hi",
+      "output": "data:;charset=UTF-8,Hi"
+    },
+    {
+      "id": "mailto-local-part-and-domain-case-are-preserved",
+      "input": "MAILTO:Alice@Example.TEST",
+      "output": "mailto:Alice@Example.TEST"
+    },
+    {
+      "id": "zwj-is-kept",
+      "input": "a‍b",
+      "output": "a‍b"
+    },
+    {
+      "id": "zwnj-is-kept",
+      "input": "a‌b",
+      "output": "a‌b"
+    },
+    {
+      "id": "c1-control-is-removed",
+      "input": "ab",
+      "output": "ab"
+    },
+    {
+      "id": "vertical-tab-is-a-line-terminator-in-a-fence",
+      "input": "```\na\u000bb\n```",
+      "output": "```\na\nb\n```"
+    },
+    {
+      "id": "word-joiner-is-removed",
+      "input": "a⁠b",
+      "output": "ab"
+    },
+    {
+      "id": "trailing-whitespace-at-end-of-input",
+      "input": "alpha   ",
+      "output": "alpha"
+    },
+    {
+      "id": "control-removal-can-create-a-uri",
+      "input": "HTTP\u0000://EXAMPLE.COM/a--b",
+      "output": "http://example.com/a--b"
+    },
+    {
+      "id": "trailing-trim-runs-before-recognition",
+      "input": "`x`\t",
+      "output": "`x`"
+    },
+    {
+      "id": "zwsp-kept-between-lao-letters",
+      "input": "ກ​ຂ",
+      "output": "ກ​ຂ"
+    },
+    {
+      "id": "zwsp-kept-between-myanmar-letters",
+      "input": "က​ခ",
+      "output": "က​ခ"
+    },
+    {
+      "id": "fence-info-string-with-a-backtick-is-not-an-opener",
+      "input": "x\n```py`x\na  b\n```\ny",
+      "output": "x ```py`x a b\n```\ny"
+    },
+    {
+      "id": "fence-closer-longer-than-opener",
+      "input": "x\n```\na  b\n`````\ny",
+      "output": "x\n```\na  b\n`````\ny"
+    },
+    {
+      "id": "two-fences-share-the-line-ending-between-them",
+      "input": "```\na  b\n```\n```\nc  d\n```",
+      "output": "```\na  b\n```\n```\nc  d\n```"
+    },
+    {
+      "id": "a-backtick-before-a-fence-cannot-pair-with-one-after",
+      "input": "`x\n```\na  b\n```\ny`",
+      "output": "`x\n```\na  b\n```\ny`"
+    },
+    {
+      "id": "scanning-resumes-after-a-failed-opener",
+      "input": "````\nx\n```\na  b\n```",
+      "output": "````\nx\n```\na  b\n```"
+    },
+    {
+      "id": "input-that-is-only-a-fence-delimiter",
+      "input": "```",
+      "output": "```"
+    },
+    {
+      "id": "uri-parentheses-are-counted",
+      "input": "see https://example.test/Foo_(a--b) now",
+      "output": "see https://example.test/Foo_(a--b) now"
+    },
+    {
+      "id": "uri-stops-at-an-unmatched-close-paren",
+      "input": "(see https://example.test/a--b) now",
+      "output": "(see https://example.test/a--b) now"
+    },
+    {
+      "id": "uri-stops-at-a-backtick-which-opens-a-span",
+      "input": "HTTP://EXAMPLE/X`a--b`",
+      "output": "http://example/X`a--b`"
+    },
+    {
+      "id": "uri-stops-at-an-angle-bracket",
+      "input": "see <https://example.test/a--b> now",
+      "output": "see <https://example.test/a--b> now"
+    },
+    {
+      "id": "uri-stops-at-a-raw-quote-which-then-folds",
+      "input": "HTTPS://EXAMPLE.TEST/a\"b",
+      "output": "https://example.test/a'b"
+    },
+    {
+      "id": "data-url-base64-flag-must-come-last",
+      "input": "data:text/plain;base64;charset=x,a--b",
+      "output": "data:text/plain;base64;charset=x,a-b"
+    },
+    {
+      "id": "data-url-uppercase-scheme-with-no-mediatype",
+      "input": "DATA:,a--b",
+      "output": "data:,a--b"
+    },
+    {
+      "id": "quoted-line-holding-an-inline-span",
+      "input": "> see `a  b` now\nreply",
+      "output": ">see `a  b` now\nreply"
+    },
+    {
+      "id": "quoted-line-holding-a-uri",
+      "input": "> see https://x.test/a--b now\nreply",
+      "output": ">see https://x.test/a--b now\nreply"
+    },
+    {
+      "id": "a-span-holding-a-quote-marker-is-not-a-quotation",
+      "input": "`>x`\nreply",
+      "output": "`>x` reply"
+    },
+    {
+      "id": "fullwidth-greater-than-becomes-a-quote-marker",
+      "input": "＞ alpha\nreply",
+      "output": ">alpha\nreply"
+    },
+    {
+      "id": "quote-prefix-separated-by-a-tab",
+      "input": ">\talpha\nreply",
+      "output": ">alpha\nreply"
+    },
+    {
+      "id": "nbsp-before-a-quote-marker",
+      "input": " > quoted",
+      "output": ">quoted"
+    },
+    {
+      "id": "input-that-is-only-a-quote-marker",
+      "input": ">",
+      "output": ""
+    },
+    {
+      "id": "trailing-space-on-a-quoted-line-before-joining",
+      "input": "> a  \n> b\n",
+      "output": ">a b"
+    },
+    {
+      "id": "inline-span-protects-a-quote-marker-and-folds-its-newline",
+      "input": "`a\n>b`\n>c",
+      "output": "`a >b`\n>c"
+    },
+    {
+      "id": "a-fence-inside-a-quoted-region",
+      "input": "> q\n```\nx\n```\na",
+      "output": ">q\n```\nx\n```\na"
+    },
+    {
+      "id": "nbsp-after-a-newline-inside-an-inline-span",
+      "input": "see `a\n b` now",
+      "output": "see `a b` now"
+    },
+    {
+      "id": "ellipsis-expands-then-attaches-leftward",
+      "input": "word …",
+      "output": "word..."
+    },
+    {
+      "id": "ampersand-spacing-after-terminal-punctuation",
+      "input": "?&",
+      "output": "? &"
+    },
+    {
+      "id": "folded-quote-loses-its-rightward-binding",
+      "input": "a “ b",
+      "output": "a ' b"
+    },
+    {
+      "id": "ideographic-comma-then-leftward-attachment",
+      "input": "A 、 B",
+      "output": "A, B"
+    }
+  ]
+}

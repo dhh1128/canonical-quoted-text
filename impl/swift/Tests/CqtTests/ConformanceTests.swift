@@ -2,7 +2,7 @@ import XCTest
 import Foundation
 @testable import Cqt
 
-/// Runs the normative vectors in `goldens/cqt2.17.json`.
+/// Runs the normative vectors in `goldens/cqt3.17.json`.
 ///
 /// Comparisons are on UTF-8 bytes, never on `String`. Swift's `==` for `String`
 /// compares under canonical equivalence, so `"\u{0340}" == "\u{0300}"` is true;
@@ -37,10 +37,10 @@ final class ConformanceTests: XCTestCase {
             .deletingLastPathComponent()   // swift
             .deletingLastPathComponent()   // impl
             .deletingLastPathComponent()   // repo root
-        let candidate = repoRoot.appendingPathComponent("goldens/cqt2.17.json")
+        let candidate = repoRoot.appendingPathComponent("goldens/cqt3.17.json")
         if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-            .appendingPathComponent("../../goldens/cqt2.17.json")
+            .appendingPathComponent("../../goldens/cqt3.17.json")
     }
 
     func loadManifest() throws -> Manifest {
@@ -50,7 +50,7 @@ final class ConformanceTests: XCTestCase {
 
     func testManifestIsTheExpectedAlgorithm() throws {
         let m = try loadManifest()
-        XCTAssertEqual(m.algorithm, "cqt2.17")
+        XCTAssertEqual(m.algorithm, "cqt3.17")
         XCTAssertEqual(m.unicodeVersion, "17.0.0")
         XCTAssertEqual(m.encoding, "UTF-8")
         XCTAssertFalse(m.cases.isEmpty)
@@ -60,7 +60,7 @@ final class ConformanceTests: XCTestCase {
         let m = try loadManifest()
         var failures: [String] = []
         for c in m.cases {
-            let got = Cqt.algorithm217(c.input)          // [UInt8], UTF-8
+            let got = Cqt.algorithm317(c.input)          // [UInt8], UTF-8
             let want = Array(c.output.utf8)
             if got != want {
                 failures.append("""
@@ -83,7 +83,7 @@ final class ConformanceTests: XCTestCase {
         for c in m.cases {
             XCTAssertEqual(
                 Array(Cqt.canonicalize(c.input).utf8),
-                Cqt.algorithm217(c.input),
+                Cqt.algorithm317(c.input),
                 "APIs disagree for \(c.id)"
             )
         }
@@ -94,10 +94,10 @@ final class ConformanceTests: XCTestCase {
     func testOperatesOnScalarsNotGraphemes() {
         // "e" + combining acute is one Character but two scalars, and the
         // combining acute must be free to compose under NFKC.
-        XCTAssertEqual(Cqt.algorithm217("e\u{0301}"), Array("\u{00E9}".utf8))
+        XCTAssertEqual(Cqt.algorithm317("e\u{0301}"), Array("\u{00E9}".utf8))
         // A variation selector belongs to the same grapheme as the character
         // before it, and step 7.7 must still see the base character.
-        XCTAssertEqual(Cqt.algorithm217("\u{00A9}\u{FE0F}"), Array("(c)".utf8))
+        XCTAssertEqual(Cqt.algorithm317("\u{00A9}\u{FE0F}"), Array("(c)".utf8))
     }
 
     // MARK: - The worked examples in README.md
@@ -112,7 +112,7 @@ final class ConformanceTests: XCTestCase {
             + "voir https://example.test/a--b?q=1&r=2... et c'est pr\u{EA}t!':-) "
             + "\u{65E5}\u{672C}\u{8A9E}\u{3082}:'\u{30C6}\u{30B9}\u{30C8}'. "
             + "\u{0930}\u{093E}\u{092E}\u{0964} \u{0936}\u{094D}\u{092F}\u{093E}\u{092E}"
-        XCTAssertEqual(Self.debugBytes(Cqt.algorithm217(input)),
+        XCTAssertEqual(Self.debugBytes(Cqt.algorithm317(input)),
                        Self.debugBytes(Array(expected.utf8)))
     }
 
@@ -131,7 +131,7 @@ final class ConformanceTests: XCTestCase {
             ```
             After, an unclosed ``` is only prose.
             """
-        XCTAssertEqual(Self.debugBytes(Cqt.algorithm217(input)),
+        XCTAssertEqual(Self.debugBytes(Cqt.algorithm317(input)),
                        Self.debugBytes(Array(expected.utf8)))
     }
 
@@ -144,7 +144,7 @@ final class ConformanceTests: XCTestCase {
         let input = thai + "\u{200B}" + kaa + " a\u{200B}b  soft\u{00AD}hyphen  "
             + "file\u{202E}gnp.exe  a\u{0000}b  " + conjunct
         let expected = thai + "\u{200B}" + kaa + " ab softhyphen filegnp.exe ab " + conjunct
-        XCTAssertEqual(Self.debugBytes(Cqt.algorithm217(input)),
+        XCTAssertEqual(Self.debugBytes(Cqt.algorithm317(input)),
                        Self.debugBytes(Array(expected.utf8)))
     }
 

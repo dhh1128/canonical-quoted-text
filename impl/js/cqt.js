@@ -1,8 +1,8 @@
-/* Canonical Quoted Text 2.17 -- JavaScript port of the reference implementation.
+/* Canonical Quoted Text 3.17 -- JavaScript port of the reference implementation.
  *
- * Loads as a classic browser script (defining a global `algorithm_2_17`) and as
+ * Loads as a classic browser script (defining a global `algorithm_3_17`) and as
  * a CommonJS module under Node. Run `node conformance.mjs` to check it against
- * the normative vectors in goldens/cqt2.17.json.
+ * the normative vectors in goldens/cqt3.17.json.
  *
  * Every invisible character is written as a \u{...} escape rather than a
  * literal, so that a tool which reflows or re-encodes this source cannot alter
@@ -48,8 +48,12 @@ var ZERO_WIDTH_SPACE = '\u{200B}';
 var WORD_JOINER = '\u{2060}';
 var ZERO_WIDTH_NO_BREAK_SPACE = '\u{FEFF}';
 
-// Step 5.1: the four invisibles that are layout artifacts and carry no meaning.
-var REMOVED_INVISIBLES = new Set([SOFT_HYPHEN, ZERO_WIDTH_SPACE, WORD_JOINER, ZERO_WIDTH_NO_BREAK_SPACE]);
+// Step 5.1: the three invisibles that are layout artifacts and carry no meaning.
+// U+FEFF is NOT among them: it is a serialization artifact rather than a layout
+// one, so step 2.4 removes it before anything is recognized, which is why it
+// also comes out of a protected span.
+var REMOVED_INVISIBLES = new Set([SOFT_HYPHEN, ZERO_WIDTH_SPACE, WORD_JOINER]);
+var REMOVED_ARTIFACTS = new Set([ZERO_WIDTH_NO_BREAK_SPACE]);
 
 // The Unicode 17 White_Space set, enumerated by the spec so no runtime property
 // lookup is needed.
@@ -57,6 +61,23 @@ var WHITE_SPACE = codepoints([
   '0009-000D', '0020', '0085', '00A0', '1680', '2000-200A',
   '2028', '2029', '202F', '205F', '3000',
 ]);
+// Step 2.5 folds all of these onto LF, so from step 3 onward LF is the only
+// line terminator and "horizontal whitespace" is the rest of White_Space.
+var LINE_TERMINATORS = codepoints(['000A-000D', '0085', '2028', '2029']);
+var HWS_CLASS =
+  '[\u{9}\u{B}-\u{D}\u{20}\u{85}\u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}]';
+var LEAD_HWS_RE = new RegExp('^' + HWS_CLASS + '+');
+var TRAILING_HWS_RE = new RegExp(HWS_CLASS + '+$');
+var QUOTE_PREFIX_RE = new RegExp('^' + HWS_CLASS + '*>(?:' + HWS_CLASS + '|>)*');
+var FOLD_NEWLINES_RE = new RegExp('\\n+' + HWS_CLASS + '*', 'g');
+var MEDIA_TOKEN = "[A-Za-z0-9!#$%&'*+.^_`|~-]+";
+var URL_AUTHORITY_RE = /^([A-Za-z][A-Za-z0-9+.-]*)(:\/\/)([^\/?#]*)([\s\S]*)$/i;
+var URL_SCHEME_RE = /^([A-Za-z][A-Za-z0-9+.-]*)(:)([\s\S]*)$/i;
+var DATA_URI_RE = new RegExp(
+  '^(data):((?:' + MEDIA_TOKEN + '/' + MEDIA_TOKEN + ')?'
+  + '(?:;' + MEDIA_TOKEN + '=' + MEDIA_TOKEN + ')*(?:;base64)?)(,[\\s\\S]*)$',
+  'i');
+
 var WHITESPACE_RUN_RE =
   /[\u{9}-\u{D}\u{20}\u{85}\u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}]+/gu;
 
@@ -158,13 +179,25 @@ var ASCII_AUTOCORRECT_PAIRS = [
   [':)', ':-)'],
   [':|', ':-|'],
   [':(', ':-('],
-  [':D', ':-D'],
-  [':p', ':-p'],
-  [':o', ':-o'],
   [';)', ';-)'],
 ];
 
-var FENCE_OPEN_RE = /^ {0,3}(`{3,})([^`\r\n]*)$/;
+// The three whose second character is a letter carry a trailing guard: they
+// convert only when what follows is not an ASCII letter, digit, "-" or "_".
+// Without it the table rewrites URI schemes -- "did:peer" became "did:-peer",
+// "urn:oid" became "urn:-oid", and "did:keri:DKxy..." became "did:keri:-DKxy..."
+// because a D-coded CESR key follows the colon. Trailing only; a leading guard
+// would also stop converting "lol:p", which people type.
+var GUARDED_EMOTICONS = [
+  [/:D(?![A-Za-z0-9_-])/g, ':-D'],
+  [/:p(?![A-Za-z0-9_-])/g, ':-p'],
+  [/:o(?![A-Za-z0-9_-])/g, ':-o'],
+];
+
+// Any leading horizontal whitespace, not just 0-3 spaces. CommonMark needs
+// that limit to separate a fence from an indented code block; CQT has no
+// indented code blocks, so it only ever cost a fence transport had indented.
+var FENCE_OPEN_RE = new RegExp('^' + HWS_CLASS + '*(`{3,})([^`\\n]*)$');
 
 // The `i` flag WITHOUT `u` is load-bearing. RFC 3986 section 3.1 restricts a
 // scheme to ASCII ALPHA, and JavaScript's non-unicode case-insensitive
@@ -173,12 +206,23 @@ var FENCE_OPEN_RE = /^ {0,3}(`{3,})([^`\r\n]*)$/;
 // would switch to simple case folding, U+017F would match, and "http<U+017F>://"
 // would be protected as a URL when it is nothing of the kind. `y` (sticky) gives
 // the anchored-at-a-position match this scan needs.
-var URL_START_RE = /https?:\/\//iy;
+// Three forms of URI span. Any scheme followed by "://" is safe to recognize
+// because "://" does not occur in prose; a BARE scheme is not, because "note:"
+// and "here is the data:" are ordinary English. The two bare schemes here earn
+// their place by carrying structure that tells them from a sentence: mailto:
+// must reach an "@" before any whitespace, and data: must present a well-formed
+// RFC 2397 header, ending in the mandatory comma. "data:abc,x" is prose.
+var URL_START_RE = new RegExp(
+  '[A-Za-z][A-Za-z0-9+.-]*://'
+  + '|mailto:(?=[^\\s]*@)'
+  + '|data:(?:' + MEDIA_TOKEN + '/' + MEDIA_TOKEN + ')?'
+  + '(?:;' + MEDIA_TOKEN + '=' + MEDIA_TOKEN + ')*(?:;base64)?,',
+  'iy');
 
 var MULTI_HYPHEN_RE = /-{2,}/g;
 var LONG_DOTS_RE = /\.{4,}/g;
 var SPACE_RUN_RE = / +/g;
-var TRIM_SPACES_RE = /^ +| +$/g;
+var TRIM_EDGES_RE = /^[ \n]+|[ \n]+$/g;
 
 // The marker is built from NUL deliberately. Step 2 strips every Cc scalar from
 // the input BEFORE protection runs, so the text cannot contain one, and a marker
@@ -272,29 +316,17 @@ function stripDisallowed(text) {
  * ------------------------------------------------------------------ */
 
 function lineBody(line) {
-  if (line.endsWith('\r\n')) return line.slice(0, -2);
-  if (line.endsWith('\r') || line.endsWith('\n')) return line.slice(0, -1);
-  return line;
+  return line.endsWith('\n') ? line.slice(0, -1) : line;
 }
 
-/* Split into lines that keep their endings. For fence recognition a line ending
- * is exactly LF, CR or CRLF; no other Unicode separator ends a line. */
+/* Split on LF, which step 2.5 has made the only line terminator. */
 function linesWithEndings(text) {
   var lines = [];
   var start = 0;
-  var i = 0;
-  while (i < text.length) {
-    var char = text.charAt(i);
-    if (char === '\r') {
-      i += i + 1 < text.length && text.charAt(i + 1) === '\n' ? 2 : 1;
-      lines.push(text.slice(start, i));
-      start = i;
-    } else if (char === '\n') {
-      i += 1;
-      lines.push(text.slice(start, i));
-      start = i;
-    } else {
-      i += 1;
+  for (var i = 0; i < text.length; i += 1) {
+    if (text.charAt(i) === '\n') {
+      lines.push(text.slice(start, i + 1));
+      start = i + 1;
     }
   }
   if (start < text.length) lines.push(text.slice(start));
@@ -320,28 +352,24 @@ function fencedSpans(text) {
     }
 
     var fenceLength = opening[1].length;
-    var closing = new RegExp('^ {0,3}`{' + fenceLength + ',}[ \\t]*$');
+    var closing = new RegExp('^' + HWS_CLASS + '*`{' + fenceLength + ',}' + HWS_CLASS + '*$');
     var j = i + 1;
     while (j < lines.length && !closing.test(lineBody(lines[j]))) j += 1;
-    if (j === lines.length) {
-      // No closing line, so the pattern is not present. A run of backticks in
-      // prose is prose. Failing to match is not an error; human text has no
-      // syntax to get wrong.
-      i += 1;
-      continue;
-    }
 
     var start = offsets[i];
     // Take the line ending that precedes the opening line, so the fence still
     // starts a line after the surrounding prose is flattened into spaces.
-    if (start >= 2 && text.slice(start - 2, start) === '\r\n') {
-      start -= 2;
-    } else if (start > 0 && (text.charAt(start - 1) === '\r' || text.charAt(start - 1) === '\n')) {
-      start -= 1;
-    }
+    if (start > 0 && text.charAt(start - 1) === '\n') start -= 1;
     if (spans.length) start = Math.max(start, spans[spans.length - 1].end);
+    if (j === lines.length) {
+      // An opener with no closer runs to the end of the input rather than
+      // decaying into prose. Truncation is ordinary, and under the old rule
+      // losing one line reinterpreted a whole block; this makes it a slope.
+      spans.push({ start: start, end: text.length, kind: 'fence' });
+      break;
+    }
     var end = offsets[j] + lines[j].length;
-    spans.push({ start: start, end: end });
+    spans.push({ start: start, end: end, kind: 'fence' });
     i = j + 1;
   }
   return spans;
@@ -407,7 +435,7 @@ function inlineAndUrlSpans(text, start, end) {
       var closing = matchingBacktickRun(text, runEnd, end, runLength);
       if (closing !== null) {
         var spanEnd = closing + runLength;
-        spans.push({ start: i, end: spanEnd });
+        spans.push({ start: i, end: spanEnd, kind: 'inline' });
         i = spanEnd;
         continue;
       }
@@ -424,7 +452,7 @@ function inlineAndUrlSpans(text, start, end) {
     var url = URL_START_RE.exec(text);
     if (url !== null && URL_START_RE.lastIndex <= end) {
       var urlSpanEnd = urlEnd(text, URL_START_RE.lastIndex, end);
-      spans.push({ start: i, end: urlSpanEnd });
+      spans.push({ start: i, end: urlSpanEnd, kind: 'url' });
       i = urlSpanEnd;
       continue;
     }
@@ -448,6 +476,171 @@ function opaqueSpans(text) {
   return spans.concat(inlineAndUrlSpans(text, cursor, text.length));
 }
 
+/* ------------------------------------------------------------------ *
+ * Step 2 continued, and the span normalizations.                      *
+ * ------------------------------------------------------------------ */
+
+/* Step 2.4: drop the byte order mark. U+FEFF is a serialization signature
+ * rather than writing, so it is not text and does not belong to the author.
+ * Removing it here, before recognition, is why it also comes out of a fence. */
+function removeArtifacts(text) {
+  var out = [];
+  for (var i = 0; i < text.length; i += 1) {
+    var char = text.charAt(i);
+    if (!REMOVED_ARTIFACTS.has(char)) out.push(char);
+  }
+  return out.join('');
+}
+
+/* Step 2.5: every line terminator becomes LF. Prose is unaffected, because
+ * step 6.2 collapses any of them to one space either way. What changes is the
+ * interior of a protected span, where CRLF and LF used to give different bytes
+ * for the same block; MIME text/plain is CRLF-canonical, so email converts as
+ * a matter of course. */
+function normalizeLineTerminators(text) {
+  text = text.split('\r\n').join('\n');
+  var out = [];
+  for (var i = 0; i < text.length; i += 1) {
+    var char = text.charAt(i);
+    out.push(LINE_TERMINATORS.has(char) ? '\n' : char);
+  }
+  return out.join('');
+}
+
+/* Step 2.6: remove horizontal whitespace before a line ending or end of input.
+ * Editors trim on save, mailers pad, chat clients strip, and nobody can see
+ * any of it. */
+function rightTrimLines(text) {
+  var lines = text.split('\n');
+  for (var i = 0; i < lines.length; i += 1) lines[i] = lines[i].replace(TRAILING_HWS_RE, '');
+  return lines.join('\n');
+}
+
+/* Step 6.1: normalize quotation.
+ *
+ * The marker first: a leading run of horizontal whitespace, a ">", and every
+ * following character that is horizontal whitespace or another ">" all become
+ * a single ">". A line that is nothing but the prefix is dropped, as is a
+ * blank line, because mailers disagree about whether a blank quoted line keeps
+ * its marker and nothing downstream would have preserved it.
+ *
+ * Then the structure. Consecutive lines of the same kind are joined, so the
+ * number of markers stops tracking how a client wrapped the text; and the line
+ * ending is kept wherever the kind changes, so a quoted question cannot absorb
+ * the reply beneath it. Marking only where a quotation starts would be worse
+ * than useless -- it would look as though quotation were tracked while
+ * "> Did you murder that man?" followed by "No!" still reached the same bytes
+ * as "> Did you murder that man? No!", as every version before 3.17 did.
+ */
+function normalizeQuotation(text) {
+  var lines = text.split('\n');
+  var parts = [];
+  var current = [];
+  var currentQuoted = null;
+  for (var i = 0; i < lines.length; i += 1) {
+    var line = lines[i];
+    var match = QUOTE_PREFIX_RE.exec(line);
+    var quoted = match !== null;
+    var body = quoted ? line.slice(match[0].length) : line;
+    if (body.trim() === '') continue;
+    if (currentQuoted !== null && quoted !== currentQuoted) {
+      parts.push((currentQuoted ? '>' : '') + current.join(' '));
+      current = [];
+    }
+    currentQuoted = quoted;
+    current.push(body);
+  }
+  if (currentQuoted !== null) parts.push((currentQuoted ? '>' : '') + current.join(' '));
+  return parts.join('\n');
+}
+
+/* Strip leading horizontal whitespace from a fence's delimiter lines. Only the
+ * two lines that are pure syntax; indentation inside the block is content --
+ * it is what Python means -- and is never touched. */
+function normalizeFenceIndent(body) {
+  var lines = linesWithEndings(body);
+  var fenceLength = null;
+  var out = [];
+  for (var i = 0; i < lines.length; i += 1) {
+    var line = lines[i];
+    var core = lineBody(line);
+    if (fenceLength === null) {
+      var opening = FENCE_OPEN_RE.exec(core);
+      if (opening) {
+        fenceLength = opening[1].length;
+        line = line.replace(LEAD_HWS_RE, '');
+      }
+      out.push(line);
+      continue;
+    }
+    if (i === lines.length - 1) {
+      var closing = new RegExp('^' + HWS_CLASS + '*`{' + fenceLength + ',}' + HWS_CLASS + '*$');
+      if (closing.test(core)) line = line.replace(LEAD_HWS_RE, '');
+    }
+    out.push(line);
+  }
+  return out.join('');
+}
+
+/* RFC 3986 case-insensitivity is ASCII-only. A Unicode lowering would fold
+ * characters a scheme or host cannot legally contain, and is locale-sensitive
+ * for the dotted capital I. */
+function asciiLower(text) {
+  return text.replace(/[A-Z]/g, function (c) { return c.toLowerCase(); });
+}
+
+/* Lowercase what RFC 2045 defines as case-insensitive in a data: header, and
+ * nothing else. Section 5.1: the type, the subtype and each parameter's
+ * attribute NAME are case-insensitive. A value is not, in general -- charset
+ * happens to be, but that is RFC 2046 speaking about one parameter rather than
+ * a rule about values -- so a value is reproduced exactly. ";base64" is an
+ * attribute name with no value and folds with them. */
+function lowerDataHeader(header) {
+  var parts = header.split(';');
+  var out = [asciiLower(parts[0])];
+  for (var i = 1; i < parts.length; i += 1) {
+    var eq = parts[i].indexOf('=');
+    out.push(eq < 0 ? asciiLower(parts[i])
+                    : asciiLower(parts[i].slice(0, eq)) + parts[i].slice(eq));
+  }
+  return out.join(';');
+}
+
+/* A protected span is not untouched bytes. It is text canonicalized under a
+ * reduced rule set: line structure belongs to the channel, everything else
+ * belongs to the author. */
+function normalizeSpan(kind, body) {
+  if (kind === 'fence') return normalizeFenceIndent(body);
+  if (kind === 'inline') {
+    // A line ending inside an inline span folds to one space, along with any
+    // indentation after it. That is what makes an inline span rewrap-safe, and
+    // it is the difference between the two kinds: an inline span carries no
+    // line structure, a fence does.
+    return body.replace(FOLD_NEWLINES_RE, ' ');
+  }
+  if (kind === 'url') {
+    var m = URL_AUTHORITY_RE.exec(body);
+    if (m) {
+      var authority = m[3];
+      var at = authority.lastIndexOf('@');
+      var userinfo = at >= 0 ? authority.slice(0, at + 1) : '';
+      var host = at >= 0 ? authority.slice(at + 1) : authority;
+      return asciiLower(m[1]) + m[2] + userinfo + asciiLower(host) + m[4];
+    }
+    // A data: URI carries its own case-insensitive fields, defined by RFC 2045
+    // rather than by RFC 3986: the type, the subtype and each parameter's
+    // attribute name. Those fold; parameter values and the payload do not.
+    var dm = DATA_URI_RE.exec(body);
+    if (dm) return asciiLower(dm[1]) + ':' + lowerDataHeader(dm[2]) + dm[3];
+    // Any other URI with no authority -- mailto: -- has a case-insensitive
+    // scheme and nothing else this algorithm is entitled to fold.
+    var n = URL_SCHEME_RE.exec(body);
+    if (n) return asciiLower(n[1]) + n[2] + n[3];
+    return body;
+  }
+  return body;
+}
+
 function protect(text) {
   var spans = opaqueSpans(text);
   if (spans.length === 0) return { text: text, spans: new Map() };
@@ -460,7 +653,7 @@ function protect(text) {
     var marker = MARKER_OPEN + 'CQT' + i + MARKER_CLOSE;
     parts.push(text.slice(cursor, span.start));
     parts.push(marker);
-    stash.set(marker, text.slice(span.start, span.end));
+    stash.set(marker, normalizeSpan(span.kind, text.slice(span.start, span.end)));
     cursor = span.end;
   }
   parts.push(text.slice(cursor));
@@ -499,9 +692,14 @@ function removeInvisibles(text) {
   return out.join('');
 }
 
-/* Step 6: one U+0020 per whitespace run, then trim leading and trailing spaces. */
+/* Step 6.2: a run of whitespace becomes one space, or one LF if the run
+ * contains one. Step 6.1 has already joined every line within a passage, so
+ * the only line endings left are the boundaries it chose to keep, and those
+ * carry meaning a space would destroy. Step 6.3 then trims both. */
 function collapseWhitespace(text) {
-  return text.replace(WHITESPACE_RUN_RE, ' ').replace(TRIM_SPACES_RE, '');
+  return text
+    .replace(WHITESPACE_RUN_RE, function (run) { return run.indexOf('\n') >= 0 ? '\n' : ' '; })
+    .replace(TRIM_EDGES_RE, '');
 }
 
 /** Replace every occurrence literally, with no `$` substitution in the target. */
@@ -554,6 +752,7 @@ function canonicalizeProse(text) {
   var i;
   text = text.normalize('NFKC');
   text = removeInvisibles(text);
+  text = normalizeQuotation(text);
   text = collapseWhitespace(text);
   text = text.replace(DASH_PUNCTUATION_RE, '-');
   text = text.replace(MULTI_HYPHEN_RE, '-');
@@ -569,6 +768,9 @@ function canonicalizeProse(text) {
   for (i = 0; i < ASCII_AUTOCORRECT_PAIRS.length; i += 1) {
     text = replaceAllLiteral(text, ASCII_AUTOCORRECT_PAIRS[i][0], ASCII_AUTOCORRECT_PAIRS[i][1]);
   }
+  for (i = 0; i < GUARDED_EMOTICONS.length; i += 1) {
+    text = text.replace(GUARDED_EMOTICONS[i][0], GUARDED_EMOTICONS[i][1]);
+  }
   text = removeSpacesAdjacentToPunctuation(text);
   text = replaceAllLiteral(text, '&', ' & ');
   return collapseWhitespace(text);
@@ -579,17 +781,20 @@ function canonicalizeProse(text) {
  * ------------------------------------------------------------------ */
 
 /**
- * Return the CQT 2.17 canonical UTF-8 byte stream for `plaintext`.
+ * Return the CQT 3.17 canonical UTF-8 byte stream for `plaintext`.
  *
  * @param {string} plaintext
  * @returns {Uint8Array}
  */
-function algorithm_2_17(plaintext) {
+function algorithm_3_17(plaintext) {
   if (typeof plaintext !== 'string') throw new TypeError('plaintext must be a string');
   // Strip what cannot be plain text BEFORE recognizing anything. Otherwise an
   // override hidden inside a fence or a URL is copied through untouched, and the
   // span becomes a channel for exactly the spoof this removal prevents.
   var stripped = stripDisallowed(plaintext);
+  stripped = removeArtifacts(stripped);
+  stripped = normalizeLineTerminators(stripped);
+  stripped = rightTrimLines(stripped);
   var protectedResult = protect(stripped);
   var stash = protectedResult.spans;
   var text = canonicalizeProse(protectedResult.text);
@@ -602,18 +807,18 @@ function algorithm_2_17(plaintext) {
 }
 
 /**
- * Return the CQT 2.17 canonical form of `plaintext` as a JavaScript string.
+ * Return the CQT 3.17 canonical form of `plaintext` as a JavaScript string.
  * Convenience for callers that are not about to hash the bytes.
  *
  * @param {string} plaintext
  * @returns {string}
  */
 function canonicalize(plaintext) {
-  return new TextDecoder().decode(algorithm_2_17(plaintext));
+  return new TextDecoder().decode(algorithm_3_17(plaintext));
 }
 
 var api = {
-  algorithm_2_17: algorithm_2_17,
+  algorithm_3_17: algorithm_3_17,
   canonicalize: canonicalize,
   UNICODE_VERSION: UNICODE_VERSION,
 };
@@ -621,10 +826,10 @@ var api = {
 // Node (CommonJS): the three names come off require('./cqt.js').
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 
-// Browser: `algorithm_2_17` is the global entry point, which is how form.html
+// Browser: `algorithm_3_17` is the global entry point, which is how form.html
 // reaches the algorithm from a plain <script src="cqt.js">.
 if (typeof window !== 'undefined') {
-  window.algorithm_2_17 = algorithm_2_17;
+  window.algorithm_3_17 = algorithm_3_17;
   window.canonicalize = canonicalize;
   window.CQT = api;
 }

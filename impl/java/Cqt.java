@@ -1,9 +1,9 @@
-// Canonical Quoted Text 2.17 -- Java port of the reference implementation in cqt.py.
+// Canonical Quoted Text 3.17 -- Java port of the reference implementation in cqt.py.
 //
 // Run the conformance vectors with the single-file source launcher (no build tool,
 // no javac, no dependencies):
 //
-//     java Cqt.java [path/to/../../goldens/cqt2.17.json]
+//     java Cqt.java [path/to/../../goldens/cqt3.17.json]
 //
 // Unicode: the spec requires Unicode 17.0.0 for every Character Database lookup.
 // The JDK bundles its own version (Java 25 = Unicode 16.0.0), so the NFKC
@@ -117,6 +117,30 @@ public class Cqt {
             default:
                 return false;
         }
+    }
+
+    /** U+FEFF is a serialization artifact, removed by step 2.4 before recognition,
+     * which is why it also comes out of a protected span. */
+    private static boolean isRemovedArtifact(int cp) {
+        return cp == 0xFEFF;
+    }
+
+    /** Step 2.5 folds all of these onto LF. */
+    private static boolean isLineTerminator(int cp) {
+        return (cp >= 0x0A && cp <= 0x0D) || cp == 0x85 || cp == 0x2028 || cp == 0x2029;
+    }
+
+    private static boolean isHorizontalWhiteSpace(int cp) {
+        return isWhiteSpace(cp) && cp != '\n';
+    }
+
+    /** An RFC 2045 token character: printable ASCII other than space, controls and
+     * the tspecials ()&lt;&gt;@,;:\\"/[]?= */
+    private static boolean isTokenChar(int cp) {
+        if (cp <= ' ' || cp >= 0x7F) {
+            return false;
+        }
+        return "()<>@,;:\\\"/[]?=".indexOf(cp) < 0;
     }
 
     private static boolean isRemovedInvisible(int cp) {
@@ -262,15 +286,25 @@ public class Cqt {
         {":)", ":-)"},
         {":|", ":-|"},
         {":(", ":-("},
+        {";)", ";-)"},
+    };
+
+    /** The three whose second character is a letter carry a trailing guard: they
+     * convert only when what follows is not an ASCII letter, digit, "-" or "_".
+     * Without it the table rewrites URI schemes -- "did:peer" became "did:-peer".
+     * Trailing only; a leading guard would also stop converting "lol:p". */
+    private static final String[][] GUARDED_EMOTICONS = {
         {":D", ":-D"},
         {":p", ":-p"},
         {":o", ":-o"},
-        {";)", ";-)"},
     };
 
     // ---------------------------------------------------------------- patterns
 
-    private static final Pattern FENCE_OPEN = Pattern.compile("^ {0,3}(`{3,})[^`\r\n]*$");
+    private static final String HWS = "[\\x{9}\\x{B}-\\x{D}\\x{20}\\x{85}\\x{A0}\\x{1680}\\x{2000}-\\x{200A}\\x{2028}\\x{2029}\\x{202F}\\x{205F}\\x{3000}]";
+    private static final Pattern FENCE_OPEN = Pattern.compile("^" + HWS + "*(`{3,})[^`\\n]*$");
+    private static final Pattern LEAD_HWS = Pattern.compile("^" + HWS + "+");
+    private static final Pattern TRAILING_HWS = Pattern.compile(HWS + "+$");
     private static final Pattern MULTI_HYPHEN = Pattern.compile("-{2,}");
     private static final Pattern LONG_DOTS = Pattern.compile("\\.{4,}");
     // The marker is built from NUL deliberately. Step 2 strips every Cc scalar from
@@ -285,8 +319,8 @@ public class Cqt {
 
     // ---------------------------------------------------------------- public API
 
-    /** Return the CQT 2.17 canonical UTF-8 byte stream for {@code plaintext}. */
-    public static byte[] algorithm217(String plaintext) {
+    /** Return the CQT 3.17 canonical UTF-8 byte stream for {@code plaintext}. */
+    public static byte[] algorithm317(String plaintext) {
         if (plaintext == null) {
             throw new NullPointerException("plaintext must not be null");
         }
@@ -294,6 +328,9 @@ public class Cqt {
         // override hidden inside a fence or a URL is copied through untouched, and
         // the span becomes a channel for exactly the spoof this removal prevents.
         String stripped = stripDisallowed(plaintext);
+        stripped = removeArtifacts(stripped);
+        stripped = normalizeLineTerminators(stripped);
+        stripped = rightTrimLines(stripped);
         Map<String, String> protectedSpans = new LinkedHashMap<>();
         String text = protect(stripped, protectedSpans);
         text = canonicalizeProse(text);
@@ -303,7 +340,7 @@ public class Cqt {
 
     /** Convenience wrapper returning the canonical text rather than its bytes. */
     public static String canonicalize(String plaintext) {
-        return new String(algorithm217(plaintext), StandardCharsets.UTF_8);
+        return new String(algorithm317(plaintext), StandardCharsets.UTF_8);
     }
 
     // ---------------------------------------------------------------- step 2
@@ -363,27 +400,25 @@ public class Cqt {
 
     // ---------------------------------------------------------------- step 3: spans
 
+    private enum SpanKind { FENCE, INLINE, URL }
+
     private static final class Span {
         final int start;
         final int end;
+        final SpanKind kind;
 
-        Span(int start, int end) {
+        Span(int start, int end, SpanKind kind) {
             this.start = start;
             this.end = end;
+            this.kind = kind;
         }
     }
 
     private static String lineBody(String line) {
-        if (line.endsWith("\r\n")) {
-            return line.substring(0, line.length() - 2);
-        }
-        if (line.endsWith("\r") || line.endsWith("\n")) {
-            return line.substring(0, line.length() - 1);
-        }
-        return line;
+        return line.endsWith("\n") ? line.substring(0, line.length() - 1) : line;
     }
 
-    /** Split on LF, CR and CRLF, keeping each line ending attached to its line. */
+    /** Split on LF, which step 2.5 has made the only line terminator. */
     private static List<String> linesWithEndings(String text) {
         List<String> lines = new ArrayList<>();
         int start = 0;
@@ -391,11 +426,7 @@ public class Cqt {
         int n = text.length();
         while (i < n) {
             char c = text.charAt(i);
-            if (c == '\r') {
-                i += (i + 1 < n && text.charAt(i + 1) == '\n') ? 2 : 1;
-                lines.add(text.substring(start, i));
-                start = i;
-            } else if (c == '\n') {
+            if (c == '\n') {
                 i += 1;
                 lines.add(text.substring(start, i));
                 start = i;
@@ -428,30 +459,28 @@ public class Cqt {
             }
 
             int fenceLength = opening.group(1).length();
-            Pattern closing = Pattern.compile("^ {0,3}`{" + fenceLength + ",}[ \t]*$");
+            Pattern closing = Pattern.compile("^" + HWS + "*`{" + fenceLength + ",}" + HWS + "*$");
             int j = i + 1;
             while (j < lines.size() && !closing.matcher(lineBody(lines.get(j))).matches()) {
                 j++;
             }
-            if (j == lines.size()) {
-                // No closing line, so the pattern is not present. A run of backticks
-                // in prose is prose. Failing to match is not an error; human text has
-                // no syntax to get wrong.
-                i++;
-                continue;
-            }
 
             int start = offsets[i];
-            if (start >= 2 && text.startsWith("\r\n", start - 2)) {
-                start -= 2;
-            } else if (start > 0 && (text.charAt(start - 1) == '\r' || text.charAt(start - 1) == '\n')) {
+            if (start > 0 && text.charAt(start - 1) == '\n') {
                 start -= 1;
             }
             if (!spans.isEmpty()) {
                 start = Math.max(start, spans.get(spans.size() - 1).end);
             }
+            if (j == lines.size()) {
+                // An opener with no closer runs to the end of the input rather than
+                // decaying into prose. Truncation is ordinary, and under the old rule
+                // losing one line reinterpreted a whole block.
+                spans.add(new Span(start, text.length(), SpanKind.FENCE));
+                break;
+            }
             int end = offsets[j] + lines.get(j).length();
-            spans.add(new Span(start, end));
+            spans.add(new Span(start, end, SpanKind.FENCE));
             i = j + 1;
         }
         return spans;
@@ -519,12 +548,82 @@ public class Cqt {
      * Pattern.UNICODE_CASE is already ASCII-only; this hand-rolled comparison makes
      * the property explicit and independent of flag choices.
      */
-    private static int matchUrlScheme(String text, int i, int limit) {
-        if (asciiEqualsIgnoreCase(text, i, limit, "https://")) {
-            return i + 8;
+    private static int runOfTokens(String text, int at, int limit) {
+        int i = at;
+        while (i < limit && isTokenChar(text.charAt(i))) {
+            i++;
         }
-        if (asciiEqualsIgnoreCase(text, i, limit, "http://")) {
-            return i + 7;
+        return i > at ? i : -1;
+    }
+
+    /** An RFC 2397 header: an optional type/subtype, zero or more ";attribute=value"
+     * parameters, an optional ";base64", and the mandatory comma. Returns the offset
+     * just past the comma. */
+    private static int dataHeader(String text, int at, int limit) {
+        int i = at;
+        int j = runOfTokens(text, i, limit);
+        if (j > 0 && j < limit && text.charAt(j) == '/') {
+            int k = runOfTokens(text, j + 1, limit);
+            if (k > 0) {
+                i = k;
+            }
+        }
+        while (i < limit && text.charAt(i) == ';') {
+            if (asciiEqualsIgnoreCase(text, i, limit, ";base64")
+                    && i + 7 < limit && text.charAt(i + 7) == ',') {
+                return i + 8;
+            }
+            int name = runOfTokens(text, i + 1, limit);
+            if (name < 0 || name >= limit || text.charAt(name) != '=') {
+                return -1;
+            }
+            int value = runOfTokens(text, name + 1, limit);
+            if (value < 0) {
+                return -1;
+            }
+            i = value;
+        }
+        return (i < limit && text.charAt(i) == ',') ? i + 1 : -1;
+    }
+
+    /** The three forms of URI span, returning the offset just past the recognized
+     * prefix. Any scheme followed by "://" is safe because "://" does not occur in
+     * prose; a bare scheme is not, because "note:" and "here is the data:" are
+     * ordinary English. The two bare schemes admitted here carry structure a
+     * sentence does not: mailto: must reach an "@" before any whitespace, and data:
+     * must present a well-formed RFC 2397 header.
+     *
+     * Comparison is ASCII-only. A Unicode case fold would make U+017F LATIN SMALL
+     * LETTER LONG S match the "s" of "https", and RFC 3986 section 3.1 allows only
+     * ASCII letters in a scheme, so that match is simply wrong. */
+    private static int matchUrlScheme(String text, int i, int limit) {
+        char first = text.charAt(i);
+        if (!((first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z'))) {
+            return -1;
+        }
+        int j = i + 1;
+        while (j < limit) {
+            char c = text.charAt(j);
+            boolean ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+                    || (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';
+            if (!ok) {
+                break;
+            }
+            j++;
+        }
+        if (asciiEqualsIgnoreCase(text, j, limit, "://")) {
+            return j + 3;
+        }
+        if (asciiEqualsIgnoreCase(text, i, limit, "mailto:")) {
+            for (int n = i + 7; n < limit && !isWhiteSpace(text.charAt(n)); n++) {
+                if (text.charAt(n) == '@') {
+                    return i + 7;
+                }
+            }
+            return -1;
+        }
+        if (asciiEqualsIgnoreCase(text, i, limit, "data:")) {
+            return dataHeader(text, i + 5, limit);
         }
         return -1;
     }
@@ -557,7 +656,7 @@ public class Cqt {
                 int closing = matchingBacktickRun(text, runEnd, end, runLength);
                 if (closing != -1) {
                     int spanEnd = closing + runLength;
-                    spans.add(new Span(i, spanEnd));
+                    spans.add(new Span(i, spanEnd, SpanKind.INLINE));
                     i = spanEnd;
                     continue;
                 }
@@ -572,7 +671,7 @@ public class Cqt {
             int schemeEnd = matchUrlScheme(text, i, end);
             if (schemeEnd != -1) {
                 int spanEnd = urlEnd(text, schemeEnd, end);
-                spans.add(new Span(i, spanEnd));
+                spans.add(new Span(i, spanEnd, SpanKind.URL));
                 i = spanEnd;
                 continue;
             }
@@ -594,6 +693,276 @@ public class Cqt {
         return spans;
     }
 
+    // -------------------------------------------------- step 2, continued
+
+    /** Step 2.4: drop the byte order mark. U+FEFF is a serialization signature
+     * rather than writing, so it is not text and does not belong to the author.
+     * Removing it here, before recognition, is why it also comes out of a fence. */
+    private static String removeArtifacts(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); ) {
+            int cp = text.codePointAt(i);
+            if (!isRemovedArtifact(cp)) {
+                out.appendCodePoint(cp);
+            }
+            i += Character.charCount(cp);
+        }
+        return out.toString();
+    }
+
+    /** Step 2.5: every line terminator becomes LF. Prose is unaffected, because
+     * step 6.2 collapses any of them to one space either way; what changes is the
+     * interior of a protected span, where CRLF and LF used to give different bytes
+     * for the same block. MIME text/plain is CRLF-canonical. */
+    private static String normalizeLineTerminators(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\r' && i + 1 < text.length() && text.charAt(i + 1) == '\n') {
+                out.append('\n');
+                i++;
+                continue;
+            }
+            out.append(isLineTerminator(c) ? '\n' : c);
+        }
+        return out.toString();
+    }
+
+    /** Step 2.6: remove the whole run of horizontal whitespace before a line ending
+     * or the end of the input. A pending run is emitted verbatim otherwise --
+     * emitting spaces instead would turn a tab inside an inline code span into a
+     * space, which is not this step's business. */
+    private static String rightTrimLines(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        StringBuilder pending = new StringBuilder();
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (isHorizontalWhiteSpace(c)) {
+                pending.append(c);
+                continue;
+            }
+            if (c != '\n') {
+                out.append(pending);
+            }
+            pending.setLength(0);
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    // ------------------------------------------------------------- step 6.1
+
+    /** Step 6.1: normalize quotation.
+     *
+     * The marker first: a leading run of horizontal whitespace, a "&gt;", and every
+     * following character that is horizontal whitespace or another "&gt;" all become
+     * a single "&gt;". A line that is nothing but the prefix is dropped, as is a
+     * blank line, because mailers disagree about whether a blank quoted line keeps
+     * its marker and nothing downstream would have preserved it.
+     *
+     * Then the structure. Consecutive lines of the same kind are joined, so the
+     * number of markers stops tracking how a client wrapped the text; and the line
+     * ending is kept wherever the kind changes, so a quoted question cannot absorb
+     * the reply beneath it. */
+    private static String normalizeQuotation(String text) {
+        List<String> parts = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        Boolean kind = null;
+        for (String line : text.split("\n", -1)) {
+            int i = 0;
+            while (i < line.length() && isHorizontalWhiteSpace(line.charAt(i))) {
+                i++;
+            }
+            boolean quoted = i < line.length() && line.charAt(i) == '>';
+            if (quoted) {
+                i++;
+                while (i < line.length()
+                        && (line.charAt(i) == '>' || isHorizontalWhiteSpace(line.charAt(i)))) {
+                    i++;
+                }
+            } else {
+                i = 0;
+            }
+            String body = line.substring(i);
+            if (body.trim().isEmpty()) {
+                continue;
+            }
+            if (kind != null && kind != quoted) {
+                parts.add((kind ? ">" : "") + String.join(" ", current));
+                current.clear();
+            }
+            kind = quoted;
+            current.add(body);
+        }
+        if (kind != null) {
+            parts.add((kind ? ">" : "") + String.join(" ", current));
+        }
+        return String.join("\n", parts);
+    }
+
+    // ---------------------------------------------------- span normalization
+
+    /** Strip leading horizontal whitespace from a fence's delimiter lines. Only the
+     * two lines that are pure syntax; indentation inside the block is content. */
+    private static String normalizeFenceIndent(String body) {
+        List<String> lines = linesWithEndings(body);
+        int fenceLength = -1;
+        StringBuilder out = new StringBuilder(body.length());
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            String core = lineBody(line);
+            if (fenceLength < 0) {
+                Matcher opening = FENCE_OPEN.matcher(core);
+                if (opening.matches()) {
+                    fenceLength = opening.group(1).length();
+                    line = LEAD_HWS.matcher(line).replaceFirst("");
+                }
+                out.append(line);
+                continue;
+            }
+            if (index == lines.size() - 1) {
+                Pattern closing = Pattern.compile("^" + HWS + "*`{" + fenceLength + ",}" + HWS + "*$");
+                if (closing.matcher(core).matches()) {
+                    line = LEAD_HWS.matcher(line).replaceFirst("");
+                }
+            }
+            out.append(line);
+        }
+        return out.toString();
+    }
+
+    /** Each run of line endings inside an inline span, with any horizontal whitespace
+     * after it, becomes one space. That is what makes an inline span rewrap-safe. */
+    private static String foldInlineNewlines(String body) {
+        StringBuilder out = new StringBuilder(body.length());
+        int i = 0;
+        while (i < body.length()) {
+            char c = body.charAt(i);
+            if (c != '\n') {
+                out.append(c);
+                i++;
+                continue;
+            }
+            while (i < body.length()
+                    && (body.charAt(i) == '\n' || isHorizontalWhiteSpace(body.charAt(i)))) {
+                i++;
+            }
+            out.append(' ');
+        }
+        return out.toString();
+    }
+
+    private static String asciiLower(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            out.append(c >= 'A' && c <= 'Z' ? (char) (c + 32) : c);
+        }
+        return out.toString();
+    }
+
+    /** Lowercase what RFC 2045 section 5.1 defines as case-insensitive and nothing
+     * else: the type, the subtype and each parameter's attribute NAME. A value is
+     * not case-insensitive in general, so it is reproduced exactly. ";base64" is an
+     * attribute name with no value and folds with them. */
+    private static String lowerDataHeader(String header) {
+        String[] parts = header.split(";", -1);
+        for (int i = 0; i < parts.length; i++) {
+            if (i == 0) {
+                parts[i] = asciiLower(parts[i]);
+                continue;
+            }
+            int eq = parts[i].indexOf('=');
+            parts[i] = eq < 0 ? asciiLower(parts[i])
+                              : asciiLower(parts[i].substring(0, eq)) + parts[i].substring(eq);
+        }
+        return String.join(";", parts);
+    }
+
+    /** Lowercase the scheme, and the host of a URI that has an authority; RFC 3986
+     * defines both as case-insensitive. A data: URI carries its own case-insensitive
+     * fields, defined by RFC 2045. Nothing else folds. */
+    private static String normalizeUri(String body) {
+        int slashes = body.indexOf("://");
+        if (slashes > 0) {
+            String scheme = body.substring(0, slashes);
+            String rest = body.substring(slashes + 3);
+            int end = rest.length();
+            for (int i = 0; i < rest.length(); i++) {
+                char c = rest.charAt(i);
+                if (c == '/' || c == '?' || c == '#') {
+                    end = i;
+                    break;
+                }
+            }
+            String authority = rest.substring(0, end);
+            String tail = rest.substring(end);
+            String userinfo = "";
+            int at = authority.lastIndexOf('@');
+            if (at >= 0) {
+                userinfo = authority.substring(0, at + 1);
+                authority = authority.substring(at + 1);
+            }
+            return asciiLower(scheme) + "://" + userinfo + asciiLower(authority) + tail;
+        }
+        int colon = body.indexOf(':');
+        if (colon < 0) {
+            return body;
+        }
+        String scheme = asciiLower(body.substring(0, colon));
+        if (!scheme.equals("data")) {
+            return scheme + body.substring(colon);
+        }
+        int comma = body.indexOf(',', colon + 1);
+        if (comma < 0) {
+            return scheme + body.substring(colon);
+        }
+        return scheme + ":" + lowerDataHeader(body.substring(colon + 1, comma)) + body.substring(comma);
+    }
+
+    /** A protected span is not untouched bytes. It is text canonicalized under a
+     * reduced rule set: line structure belongs to the channel, everything else
+     * belongs to the author. */
+    private static String normalizeSpan(SpanKind kind, String body) {
+        switch (kind) {
+            case FENCE:
+                return normalizeFenceIndent(body);
+            case INLINE:
+                return foldInlineNewlines(body);
+            case URL:
+                return normalizeUri(body);
+            default:
+                return body;
+        }
+    }
+
+    private static String applyGuardedEmoticons(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        outer:
+        while (i < text.length()) {
+            for (String[] pair : GUARDED_EMOTICONS) {
+                String from = pair[0];
+                if (!text.startsWith(from, i)) {
+                    continue;
+                }
+                int next = i + from.length();
+                if (next < text.length()) {
+                    char c = text.charAt(next);
+                    if (Character.isLetterOrDigit(c) && c < 0x80 || c == '-' || c == '_') {
+                        continue;
+                    }
+                }
+                out.append(pair[1]);
+                i = next;
+                continue outer;
+            }
+            out.append(text.charAt(i));
+            i++;
+        }
+        return out.toString();
+    }
+
     private static String protect(String text, Map<String, String> protectedSpans) {
         List<Span> spans = opaqueSpans(text);
         if (spans.isEmpty()) {
@@ -607,7 +976,7 @@ public class Cqt {
             markerNumber++;
             out.append(text, cursor, span.start);
             out.append(marker);
-            protectedSpans.put(marker, text.substring(span.start, span.end));
+            protectedSpans.put(marker, normalizeSpan(span.kind, text.substring(span.start, span.end)));
             cursor = span.end;
         }
         out.append(text, cursor, text.length());
@@ -625,7 +994,7 @@ public class Cqt {
             out.append(text, cursor, matcher.start());
             String replacement = protectedSpans.get(matcher.group());
             // Unreachable now that the marker is made of NUL, since no marker-shaped
-            // run can survive step 2. Kept because CQT 2.17 never rejects text, so a
+            // run can survive step 2. Kept because CQT 3.17 never rejects text, so a
             // marker without an entry has to come out as the text it is.
             out.append(replacement != null ? replacement : matcher.group());
             cursor = matcher.end();
@@ -651,6 +1020,7 @@ public class Cqt {
     private static String canonicalizeProse(String text) {
         text = normalizeNfkc17(text);
         text = removeInvisibles(text);
+        text = normalizeQuotation(text);
         text = collapseUnicodeWhitespace(text);
         text = mapCodePoints(text, cp -> isDashPunctuation(cp) ? "-" : null);
         text = MULTI_HYPHEN.matcher(text).replaceAll("-");
@@ -665,6 +1035,7 @@ public class Cqt {
         for (String[] pair : ASCII_AUTOCORRECT_PAIRS) {
             text = text.replace(pair[0], pair[1]);
         }
+        text = applyGuardedEmoticons(text);
         text = removeSpacesAdjacentToPunctuation(text);
         text = text.replace("&", " & ");
         return collapseUnicodeWhitespace(text);
@@ -803,14 +1174,20 @@ public class Cqt {
     private static String collapseUnicodeWhitespace(String text) {
         StringBuilder out = new StringBuilder(text.length());
         boolean inWhitespace = false;
+        boolean runHasNewline = false;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             if (isWhiteSpace(c)) {
+                runHasNewline |= c == '\n';
                 if (!inWhitespace) {
                     out.append(' ');
                 }
                 inWhitespace = true;
             } else {
+                if (inWhitespace && runHasNewline) {
+                    out.setCharAt(out.length() - 1, '\n');
+                }
+                runHasNewline = false;
                 out.append(c);
                 inWhitespace = false;
             }
@@ -819,10 +1196,10 @@ public class Cqt {
         // Unicode whitespace, which is a different operation.
         int begin = 0;
         int end = out.length();
-        while (begin < end && out.charAt(begin) == ' ') {
+        while (begin < end && (out.charAt(begin) == ' ' || out.charAt(begin) == '\n')) {
             begin++;
         }
-        while (end > begin && out.charAt(end - 1) == ' ') {
+        while (end > begin && (out.charAt(end - 1) == ' ' || out.charAt(end - 1) == '\n')) {
             end--;
         }
         return out.substring(begin, end);
@@ -886,7 +1263,7 @@ final class Conformance {
     static int run(String[] args) throws IOException {
         Path goldens = locate(args.length > 0 ? args[0] : null);
         if (goldens == null) {
-            System.err.println("cannot find ../../goldens/cqt2.17.json; pass its path as the first argument");
+            System.err.println("cannot find ../../goldens/cqt3.17.json; pass its path as the first argument");
             return 2;
         }
         String source = Files.readString(goldens, StandardCharsets.UTF_8);
@@ -909,7 +1286,7 @@ final class Conformance {
             byte[] expectedBytes = expected.getBytes(StandardCharsets.UTF_8);
             byte[] actualBytes;
             try {
-                actualBytes = Cqt.algorithm217(input);
+                actualBytes = Cqt.algorithm317(input);
             } catch (RuntimeException e) {
                 failures.add(id + "\n    threw " + e);
                 continue;
@@ -937,8 +1314,8 @@ final class Conformance {
         if (explicit != null) {
             candidates.add(explicit);
         }
-        candidates.add("../../goldens/cqt2.17.json");
-        candidates.add("../../../goldens/cqt2.17.json");
+        candidates.add("../../goldens/cqt3.17.json");
+        candidates.add("../../../goldens/cqt3.17.json");
         for (String candidate : candidates) {
             Path path = Path.of(candidate);
             if (Files.isReadable(path)) {

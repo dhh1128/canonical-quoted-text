@@ -11,20 +11,21 @@ from cqt import (
     SPACELESS_SCRIPTS,
     TERMINAL_PUNCTUATION,
     DASH_PUNCTUATION,
-    algorithm_2_17,
+    algorithm_3_17,
 )
 
 
-GOLDENS_PATH = Path(__file__).resolve().parents[2] / "goldens" / "cqt2.17.json"
+GOLDENS_PATH = Path(__file__).resolve().parents[2] / "goldens" / "cqt3.17.json"
 README_PATH = Path(__file__).resolve().parents[2] / "README.md"
 
-# The three worked examples in README.md are also vectors, so the most visible
+# The four worked examples in README.md are also vectors, so the most visible
 # outputs in the specification cannot drift from what the algorithm does. This
 # test pins the prose to the vector; test_normative_golden pins the vector to
 # the implementation. form.html is held in place the same way, by
 # impl/js/demo-page-check.mjs.
 WORKED_EXAMPLE_IDS = [
     "worked-example-typography",
+    "worked-example-quoting",
     "worked-example-fences",
     "worked-example-invisibles",
 ]
@@ -36,7 +37,7 @@ def load_goldens():
 
 def test_golden_manifest():
     manifest = load_goldens()
-    assert manifest["algorithm"] == "cqt2.17"
+    assert manifest["algorithm"] == "cqt3.17"
     assert manifest["unicode_version"] == "17.0.0"
     ids = [case["id"] for case in manifest["cases"]]
     assert len(ids) == len(set(ids))
@@ -92,13 +93,13 @@ def test_worked_examples_are_the_vectors_they_claim_to_be():
 
 @pytest.mark.parametrize("case", load_goldens()["cases"], ids=lambda case: case["id"])
 def test_normative_golden(case):
-    assert algorithm_2_17(case["input"]) == case["output"].encode("utf-8")
+    assert algorithm_3_17(case["input"]) == case["output"].encode("utf-8")
 
 
 def test_many_protected_spans_restore_in_order():
     urls = [f"https://example.test/{i}--value?a=1&b=2" for i in range(1000)]
     plaintext = " ".join(urls)
-    assert algorithm_2_17(plaintext) == plaintext.encode("utf-8")
+    assert algorithm_3_17(plaintext) == plaintext.encode("utf-8")
 
 
 def test_terminal_punctuation_set_matches_unicode_17():
@@ -123,15 +124,15 @@ def test_emoji_and_emoticon_spellings_converge():
     # transformation, so every spelling must reach the same bytes. This is why
     # the autocorrect tables run before the space rule rather than after.
     forms = ["hello \U0001f60a", "hello :)", "hello :-)", "hello:)", "hello\U0001f60a"]
-    assert len({algorithm_2_17(f) for f in forms}) == 1
+    assert len({algorithm_3_17(f) for f in forms}) == 1
 
 
 def test_cqt_is_total():
     # No input is refused. Unpaired surrogates are stripped as part of making
     # the input plain text; a well-formed pair is the character it encodes.
-    assert algorithm_2_17("left\ud800right") == b"leftright"
-    assert algorithm_2_17("left\udc00right") == b"leftright"
-    assert algorithm_2_17("a\ud83d\ude0ab") == algorithm_2_17("a\U0001f60ab")
+    assert algorithm_3_17("left\ud800right") == b"leftright"
+    assert algorithm_3_17("left\udc00right") == b"leftright"
+    assert algorithm_3_17("a\ud83d\ude0ab") == algorithm_3_17("a\U0001f60ab")
 
 
 @pytest.mark.parametrize(
@@ -139,24 +140,36 @@ def test_cqt_is_total():
     ["```", "before\n```py\nprint('x')", "｀｀｀", "I typed ``` by accident", "a͸b", "a﷐b"],
 )
 def test_human_text_has_no_syntax_errors(plaintext):
-    algorithm_2_17(plaintext)
+    algorithm_3_17(plaintext)
 
 
 def test_overrides_are_stripped_and_other_bidi_controls_are_kept():
-    assert algorithm_2_17("file‮gnp.exe") == "filegnp.exe".encode("utf-8")
-    assert algorithm_2_17("a‭b") == b"ab"
+    assert algorithm_3_17("file‮gnp.exe") == "filegnp.exe".encode("utf-8")
+    assert algorithm_3_17("a‭b") == b"ab"
     for keep in ("؜", "‎", "‏", "⁦", "⁧", "⁨", "⁩"):
-        assert keep in algorithm_2_17(f"ا{keep}b").decode("utf-8")
+        assert keep in algorithm_3_17(f"ا{keep}b").decode("utf-8")
 
 
 def test_control_characters_are_stripped_not_refused():
-    assert algorithm_2_17("before\x00after") == b"beforeafter"
+    assert algorithm_3_17("before\x00after") == b"beforeafter"
 
 
-def test_unclosed_fence_is_prose_and_closed_fence_is_exact():
-    assert algorithm_2_17("before\n```py\nx  y") == b"before ```py x y"
+def test_unclosed_fence_protects_to_end_of_input():
+    # 2.17 made this prose, so losing a closing line reinterpreted the whole
+    # block and a one-line truncation produced total divergence. 3.17 protects
+    # to the end instead, which turns that cliff into a slope.
+    unclosed = "before\n```py\nx  y"
+    assert algorithm_3_17(unclosed) == unclosed.encode("utf-8")
     exact = "a\n```\nx  y\n```\nb"
-    assert algorithm_2_17(exact) == exact.encode("utf-8")
+    assert algorithm_3_17(exact) == exact.encode("utf-8")
+
+
+def test_backticks_mid_line_are_still_prose():
+    # An opener has to be a complete line, so a run inside a sentence cannot
+    # start a fence and is not swept up by the rule above.
+    assert algorithm_3_17("I keep typing ``` and  getting nothing.") == (
+        b"I keep typing ``` and getting nothing."
+    )
 
 
 def test_prose_is_transformed_in_one_pass():
@@ -164,6 +177,46 @@ def test_prose_is_transformed_in_one_pass():
     # reaches ":-)" without iterating.
     # One pass, so nothing revisits the tables after the space closes: ": )"
     # ends at ":)". That is an authored oddity, not a tooling artifact.
-    assert algorithm_2_17(": )") == b":)"
-    assert algorithm_2_17("hello :)") == b"hello:-)"
-    assert algorithm_2_17("hello \U0001f60a") == b"hello:-)"
+    assert algorithm_3_17(": )") == b":)"
+    assert algorithm_3_17("hello :)") == b"hello:-)"
+    assert algorithm_3_17("hello \U0001f60a") == b"hello:-)"
+
+
+def test_the_outer_partition_cannot_be_smeared():
+    """A signer commits to their own words plus a quoted chunk, as quoted.
+
+    How well the inner material is quoted is not this algorithm's problem, and
+    quotations at different depths deliberately flow together. What must never
+    happen is a smear at the OUTER level: two messages that divide their text
+    differently between the signer's own words and the quoted material must not
+    reach the same bytes. This searches for a counterexample.
+
+    Bodies that begin with ">" are excluded on purpose. Such a line is
+    ambiguous in plain text to a reader as much as to the algorithm, so a
+    collision there is the input's doing rather than the canonicalization's.
+    """
+    import random
+
+    spellings = ["> ", ">", ">> ", "  > ", "> > "]
+    chunks = [
+        ["alpha"], ["beta"], ["gamma  delta"], ["plain -- text"], ["`a  b`"],
+        ["```", "x  y", "```"],
+        ["```py", "def f():", "    return 1", "```"],
+        ["```", ">fake quote inside a fence", "```"],
+        ["```", "line one", "", "line two", "```"],
+    ]
+    rng = random.Random(20260829)
+    seen = {}
+    for _ in range(8000):
+        message = [(rng.random() < 0.5, rng.choice(chunks))
+                   for _ in range(rng.randint(1, 4))]
+        text = "\n".join(
+            (rng.choice(spellings) if quoted else "") + line
+            for quoted, lines in message
+            for line in lines
+        )
+        partition = tuple((quoted, tuple(lines)) for quoted, lines in message)
+        key = algorithm_3_17(text)
+        assert seen.setdefault(key, (partition, text))[0] == partition, (
+            f"outer smear: {seen[key][1]!r} and {text!r} both reach {key!r}"
+        )

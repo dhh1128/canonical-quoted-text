@@ -1,9 +1,9 @@
 [package]
 name = "cqt"
-version = "2.17.0"
+version = "3.17.0"
 edition = "2021"
 rust-version = "1.70"
-description = "Canonical Quoted Text 2.17"
+description = "Canonical Quoted Text 3.17"
 license = "Unlicense"
 publish = false
 
@@ -14,7 +14,7 @@ name = "cqt"
 path = "cqt.rs"
 
 [dependencies]
-# 0.1.25 implements Unicode 17.0.0, which is what cqt2.17 requires. Verified
+# 0.1.25 implements Unicode 17.0.0, which is what cqt3.17 requires. Verified
 # against the reference implementation: identical NFKC output and identical
 # canonical_combining_class for every one of the 1,112,064 Unicode scalar values.
 unicode-normalization = "=0.1.25"

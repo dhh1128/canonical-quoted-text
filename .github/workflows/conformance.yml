@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 
-# Every job runs the same normative vectors in goldens/cqt2.17.json against one
+# Every job runs the same normative vectors in goldens/cqt3.17.json against one
 # implementation. An implementation is conformant exactly insofar as its job is
 # green. The ports in this repository drifted to CQT 1.14 and stayed there
 # unnoticed for a long time, because nothing ever built them.

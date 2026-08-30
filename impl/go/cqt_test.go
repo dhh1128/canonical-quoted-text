@@ -26,7 +26,7 @@ type manifest struct {
 
 func loadGoldens(t *testing.T) manifest {
 	t.Helper()
-	path := filepath.Join("..", "..", "goldens", "cqt2.17.json")
+	path := filepath.Join("..", "..", "goldens", "cqt3.17.json")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading %s: %v", path, err)
@@ -44,7 +44,7 @@ func loadGoldens(t *testing.T) manifest {
 // TestUnicodeTables states the dependency this port cannot work without. Go's
 // Unicode data moves with the toolchain -- go1.26 and earlier see 15.0.0 -- and
 // a build against the wrong edition produces plausible bytes that are not
-// cqt2.17.
+// cqt3.17.
 func TestUnicodeTables(t *testing.T) {
 	if norm.Version != UnicodeVersion {
 		t.Errorf("golang.org/x/text normalization tables are Unicode %s, want %s",
@@ -65,8 +65,8 @@ func TestUnicodeTables(t *testing.T) {
 
 func TestGoldenManifest(t *testing.T) {
 	m := loadGoldens(t)
-	if m.Algorithm != "cqt2.17" {
-		t.Errorf("algorithm = %q, want %q", m.Algorithm, "cqt2.17")
+	if m.Algorithm != "cqt3.17" {
+		t.Errorf("algorithm = %q, want %q", m.Algorithm, "cqt3.17")
 	}
 	if m.UnicodeVersion != UnicodeVersion {
 		t.Errorf("unicode_version = %q, want %q", m.UnicodeVersion, UnicodeVersion)
@@ -88,7 +88,7 @@ func TestNormativeGoldens(t *testing.T) {
 	passed := 0
 	for _, c := range m.Cases {
 		if t.Run(c.ID, func(t *testing.T) {
-			got := Algorithm217(c.Input)
+			got := Algorithm317(c.Input)
 			want := []byte(c.Output)
 			if !bytes.Equal(got, want) {
 				t.Errorf("input  %s\nwant   %s\n       %x\ngot    %s\n       %x",

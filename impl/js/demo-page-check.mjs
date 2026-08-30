@@ -1,6 +1,6 @@
 // The interactive tool at form.html is the only published artifact with no
 // test behind it. It broke silently once already: the port renamed its entry
-// point from algorithm_1_14 to algorithm_2_17 and moved to impl/js/, and
+// point from algorithm_1_14 to algorithm_2_17 to algorithm_3_17 and moved to impl/js/, and
 // neither the conformance suite nor the Pages build could see that the page
 // was calling a function that no longer existed.
 //
@@ -43,7 +43,7 @@ if (source && called) {
        + ` (it defines: ${Object.keys(window).join(', ') || 'nothing'})`);
   } else {
     console.log(`ok    ${src} defines window.${called}`);
-    const { cases } = JSON.parse(readFileSync(join(repo, 'goldens', 'cqt2.17.json'), 'utf8'));
+    const { cases } = JSON.parse(readFileSync(join(repo, 'goldens', 'cqt3.17.json'), 'utf8'));
     const probe = cases.find((c) => c.id === 'identity-ascii') ?? cases[0];
     const got = new TextDecoder().decode(window[called](probe.input));
     if (got !== probe.output) {

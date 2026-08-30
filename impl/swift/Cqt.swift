@@ -1,7 +1,7 @@
-// Canonical Quoted Text 2.17 — Swift port.
+// Canonical Quoted Text 3.17 — Swift port.
 //
 // The algorithm is specified in ../../README.md and pinned by the vectors in
-// ../../goldens/cqt2.17.json. Every operation that consults the Unicode
+// ../../goldens/cqt3.17.json. Every operation that consults the Unicode
 // Character Database must use Unicode 17.0.0.
 //
 // Two Swift-specific hazards shape this file.
@@ -26,21 +26,21 @@ public enum Cqt {
     /// The Unicode edition every property lookup below must use.
     public static let unicodeVersion = "17.0.0"
 
-    /// The CQT 2.17 canonical form of `plaintext`, as the UTF-8 byte stream of
+    /// The CQT 3.17 canonical form of `plaintext`, as the UTF-8 byte stream of
     /// step 9. This is what a hash or a signature is taken over.
-    public static func algorithm217(_ plaintext: String) -> [UInt8] {
+    public static func algorithm317(_ plaintext: String) -> [UInt8] {
         var view = String.UnicodeScalarView()
         for scalar in canonicalScalars(Array(plaintext.unicodeScalars)) { view.append(scalar) }
         return Array(String(view).utf8)
     }
 
-    /// The CQT 2.17 canonical form of `plaintext`, as a `String`. Convenience
+    /// The CQT 3.17 canonical form of `plaintext`, as a `String`. Convenience
     /// for callers that are not about to hash the bytes.
     ///
-    /// Prefer `algorithm217(_:)` when comparing: `String` equality in Swift is
+    /// Prefer `algorithm317(_:)` when comparing: `String` equality in Swift is
     /// canonical-equivalence equality, which is not what CQT means by "same".
     public static func canonicalize(_ plaintext: String) -> String {
-        String(decoding: algorithm217(plaintext), as: UTF8.self)
+        String(decoding: algorithm317(plaintext), as: UTF8.self)
     }
 
     // MARK: - The algorithm
@@ -49,11 +49,15 @@ public enum Cqt {
         // Step 1 is the caller's: text arrives as Unicode scalars. Swift's
         // `String` cannot hold an unpaired surrogate, so step 2.1 has already
         // happened by the time any input reaches us.
-        let plain = makePlain(input)                            // step 2
+        var plain = makePlain(input)                            // step 2.1-2.3
+        plain = removeArtifacts(plain)                          // step 2.4
+        plain = normalizeLineTerminators(plain)                 // step 2.5
+        plain = rightTrimLines(plain)                           // step 2.6
         let (prose, spans) = setAsideProtectedSpans(plain)      // step 3
         var text = nfkc17(prose)                                // step 4
         text = removeInvisibles(text)                           // step 5
-        text = normalizeWhitespace(text)                        // step 6
+        text = normalizeQuotation(text)                         // step 6.1
+        text = normalizeWhitespace(text)                        // step 6.2-6.3
         text = normalizePunctuation(text)                       // step 7
         return restore(spans, into: text)                       // step 8
     }
@@ -73,12 +77,70 @@ public enum Cqt {
         }
     }
 
+    /// Step 2.4: drop the byte order mark. U+FEFF is a serialization signature
+    /// rather than writing, so it is not text and does not belong to the author.
+    /// Removing it here, before recognition, is why it also comes out of a fence.
+    static func removeArtifacts(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        scalars.filter { $0.value != 0xFEFF }
+    }
+
+    static func isLineTerminator(_ v: UInt32) -> Bool {
+        (v >= 0x0A && v <= 0x0D) || v == 0x85 || v == 0x2028 || v == 0x2029
+    }
+
+    static func isHorizontalWhiteSpace(_ v: UInt32) -> Bool {
+        isWhiteSpace(v) && v != 0x0A
+    }
+
+    /// Step 2.5: every line terminator becomes LF. Prose is unaffected, because
+    /// step 6.2 collapses any of them to one space either way; what changes is
+    /// the interior of a protected span, where CRLF and LF used to give
+    /// different bytes for the same block. MIME text/plain is CRLF-canonical.
+    static func normalizeLineTerminators(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        out.reserveCapacity(scalars.count)
+        var i = 0
+        while i < scalars.count {
+            if scalars[i].value == 0x0D, i + 1 < scalars.count, scalars[i + 1].value == 0x0A {
+                out.append("\u{000A}")
+                i += 2
+                continue
+            }
+            out.append(isLineTerminator(scalars[i].value) ? "\u{000A}" : scalars[i])
+            i += 1
+        }
+        return out
+    }
+
+    /// Step 2.6: remove the whole run of horizontal whitespace before a line
+    /// ending or the end of the input. A pending run is emitted verbatim
+    /// otherwise -- emitting spaces instead would turn a tab inside an inline
+    /// code span into a space, which is not this step's business.
+    static func rightTrimLines(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        out.reserveCapacity(scalars.count)
+        var pending: [Unicode.Scalar] = []
+        for scalar in scalars {
+            if isHorizontalWhiteSpace(scalar.value) {
+                pending.append(scalar)
+                continue
+            }
+            if scalar.value != 0x0A { out += pending }
+            pending.removeAll(keepingCapacity: true)
+            out.append(scalar)
+        }
+        return out
+    }
+
     // MARK: - Step 3: protected content
 
     /// A protected span, as half-open scalar offsets into the step-2 text.
+    enum SpanKind { case fence, inline, url }
+
     struct Span {
         let start: Int
         let end: Int
+        let kind: SpanKind
     }
 
     /// A line of the input: content is `[start, contentEnd)`, its line ending
@@ -108,7 +170,7 @@ public enum Cqt {
         for span in spans {
             prose += scalars[cursor..<span.start]
             prose += placeholder(contents.count)
-            contents.append(Array(scalars[span.start..<span.end]))
+            contents.append(normalizeSpan(span.kind, Array(scalars[span.start..<span.end])))
             cursor = span.end
         }
         prose += scalars[cursor...]
@@ -137,11 +199,6 @@ public enum Cqt {
                 out.append(Line(start: start, contentEnd: i, end: i + 1))
                 i += 1
                 start = i
-            } else if v == 0x0D {
-                let end = (i + 1 < scalars.count && scalars[i + 1].value == 0x0A) ? i + 2 : i + 1
-                out.append(Line(start: start, contentEnd: i, end: end))
-                i = end
-                start = i
             } else {
                 i += 1
             }
@@ -153,12 +210,9 @@ public enum Cqt {
     /// Length of the backtick run of an opening fence, or nil.
     private static func openingFenceRun(_ scalars: [Unicode.Scalar], _ line: Line) -> Int? {
         var i = line.start
-        var spaces = 0
-        while i < line.contentEnd && scalars[i].value == 0x20 {
-            spaces += 1
+        while i < line.contentEnd && isHorizontalWhiteSpace(scalars[i].value) {
             i += 1
         }
-        if spaces > 3 { return nil }
         var run = 0
         while i < line.contentEnd && scalars[i].value == 0x60 {
             run += 1
@@ -177,12 +231,9 @@ public enum Cqt {
         _ scalars: [Unicode.Scalar], _ line: Line, atLeast opening: Int
     ) -> Bool {
         var i = line.start
-        var spaces = 0
-        while i < line.contentEnd && scalars[i].value == 0x20 {
-            spaces += 1
+        while i < line.contentEnd && isHorizontalWhiteSpace(scalars[i].value) {
             i += 1
         }
-        if spaces > 3 { return false }
         var run = 0
         while i < line.contentEnd && scalars[i].value == 0x60 {
             run += 1
@@ -190,8 +241,7 @@ public enum Cqt {
         }
         if run < opening { return false }
         while i < line.contentEnd {
-            let v = scalars[i].value
-            if v != 0x20 && v != 0x09 { return false }
+            if !isHorizontalWhiteSpace(scalars[i].value) { return false }
             i += 1
         }
         return true
@@ -216,17 +266,18 @@ public enum Cqt {
                 }
                 j += 1
             }
-            // An opening fence with no closing fence is not a fence, and
-            // scanning resumes on the line after the failed opener.
-            if closer < 0 {
-                i += 1
-                continue
-            }
             var start = rows[i].start
             if i > 0 && rows[i - 1].contentEnd >= claimed {
                 start = rows[i - 1].contentEnd   // take the preceding line ending
             }
-            spans.append(Span(start: start, end: rows[closer].end))
+            // An opener with no closer runs to the end of the input rather than
+            // decaying into prose. Truncation is ordinary, and under the old
+            // rule losing one line reinterpreted a whole block.
+            if closer < 0 {
+                spans.append(Span(start: start, end: scalars.count, kind: .fence))
+                break
+            }
+            spans.append(Span(start: start, end: rows[closer].end, kind: .fence))
             claimed = rows[closer].end
             i = closer + 1
         }
@@ -247,7 +298,7 @@ public enum Cqt {
                 while runEnd < hi && scalars[runEnd].value == 0x60 { runEnd += 1 }
                 let run = runEnd - i
                 if let closer = matchingBacktickRun(scalars, from: runEnd, to: hi, length: run) {
-                    spans.append(Span(start: i, end: closer + run))
+                    spans.append(Span(start: i, end: closer + run, kind: .inline))
                     i = closer + run
                 } else {
                     i = runEnd   // an unmatched run is prose in its entirety
@@ -255,7 +306,7 @@ public enum Cqt {
                 continue
             }
             if let end = urlSpanEnd(scalars, from: i, to: hi) {
-                spans.append(Span(start: i, end: end))
+                spans.append(Span(start: i, end: end, kind: .url))
                 i = end
                 continue
             }
@@ -297,11 +348,76 @@ public enum Cqt {
             }
             return true
         }
+        func isTokenScalar(_ v: UInt32) -> Bool {
+            if v <= 0x20 || v >= 0x7F { return false }
+            return ![0x28, 0x29, 0x3C, 0x3E, 0x40, 0x2C, 0x3B, 0x3A,
+                     0x5C, 0x22, 0x2F, 0x5B, 0x5D, 0x3F, 0x3D].contains(v)
+        }
+        func runOfTokens(_ at: Int) -> Int? {
+            var k = at
+            while k < hi && isTokenScalar(scalars[k].value) { k += 1 }
+            return k > at ? k : nil
+        }
+        /// An RFC 2397 header: optional type/subtype, zero or more
+        /// ";attribute=value" parameters, an optional ";base64", and the
+        /// mandatory comma. Returns the offset just past the comma.
+        func dataHeader(_ at: Int) -> Int? {
+            var k = at
+            if let slash = runOfTokens(k), slash < hi, scalars[slash].value == 0x2F,
+               let after = runOfTokens(slash + 1) {
+                k = after
+            }
+            while k < hi && scalars[k].value == 0x3B {
+                if matchesAt(k, base64Flag), k + 7 < hi, scalars[k + 7].value == 0x2C {
+                    return k + 8
+                }
+                guard let name = runOfTokens(k + 1), name < hi, scalars[name].value == 0x3D,
+                      let value = runOfTokens(name + 1) else { return nil }
+                k = value
+            }
+            return (k < hi && scalars[k].value == 0x2C) ? k + 1 : nil
+        }
+        func matchesAt(_ at: Int, _ want: [UInt8]) -> Bool {
+            guard at + want.count <= hi else { return false }
+            for (k, expected) in want.enumerated() {
+                let v = scalars[at + k].value
+                let lowered = (v >= 0x41 && v <= 0x5A) ? v + 0x20 : v
+                if lowered != UInt32(expected) { return false }
+            }
+            return true
+        }
+
+        // Three forms. Any scheme followed by "://" is safe because "://" does
+        // not occur in prose; a bare scheme is not, because "note:" and "here
+        // is the data:" are ordinary English. The two bare schemes admitted
+        // here carry structure a sentence does not.
         var p: Int
-        if matches(httpsScheme) {
-            p = i + httpsScheme.count
-        } else if matches(httpScheme) {
-            p = i + httpScheme.count
+        let first = scalars[i].value
+        let isAlpha = (first >= 0x41 && first <= 0x5A) || (first >= 0x61 && first <= 0x7A)
+        var schemeEnd = i + 1
+        if isAlpha {
+            while schemeEnd < hi {
+                let v = scalars[schemeEnd].value
+                let ok = (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A)
+                    || (v >= 0x30 && v <= 0x39) || v == 0x2B || v == 0x2D || v == 0x2E
+                if !ok { break }
+                schemeEnd += 1
+            }
+        }
+        if isAlpha && matchesAt(schemeEnd, slashes) {
+            p = schemeEnd + 3
+        } else if matches(mailtoScheme) {
+            var n = i + mailtoScheme.count
+            var found = false
+            while n < hi && !isWhiteSpace(scalars[n].value) {
+                if scalars[n].value == 0x40 { found = true; break }
+                n += 1
+            }
+            if !found { return nil }
+            p = i + mailtoScheme.count
+        } else if matches(dataScheme) {
+            guard let end = dataHeader(i + dataScheme.count) else { return nil }
+            p = end
         } else {
             return nil
         }
@@ -322,6 +438,10 @@ public enum Cqt {
 
     private static let httpsScheme = Array("https://".utf8)
     private static let httpScheme = Array("http://".utf8)
+    private static let mailtoScheme = Array("mailto:".utf8)
+    private static let dataScheme = Array("data:".utf8)
+    private static let slashes = Array("://".utf8)
+    private static let base64Flag = Array(";base64".utf8)
 
     // MARK: - Step 4: NFKC, in Unicode 17.0.0
 
@@ -485,7 +605,216 @@ public enum Cqt {
         return out
     }
 
-    // MARK: - Step 6: whitespace
+    // MARK: - Span normalization
+
+    private static func dropLeadingHorizontal(_ scalars: ArraySlice<Unicode.Scalar>) -> [Unicode.Scalar] {
+        let out = Array(scalars)
+        var i = 0
+        while i < out.count && isHorizontalWhiteSpace(out[i].value) { i += 1 }
+        return Array(out[i...])
+    }
+
+    /// Strip leading horizontal whitespace from a fence's delimiter lines. Only
+    /// the two lines that are pure syntax; indentation inside the block is
+    /// content -- it is what Python means -- and is never touched.
+    static func normalizeFenceIndent(_ body: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        let rows = lines(body)
+        // `lines` always appends a final row, empty when the body ends with a
+        // line ending -- and a fence span does, having taken the one after its
+        // closer. The closing delimiter is therefore the last row with content.
+        let lastWithContent = rows.lastIndex { $0.start < $0.contentEnd } ?? rows.count - 1
+        var fenceRun: Int? = nil
+        var out: [Unicode.Scalar] = []
+        for (index, row) in rows.enumerated() {
+            var piece = Array(body[row.start..<row.end])
+            if fenceRun == nil {
+                if let run = openingFenceRun(body, row) {
+                    fenceRun = run
+                    piece = dropLeadingHorizontal(body[row.start..<row.end])
+                }
+                out += piece
+                continue
+            }
+            if index == lastWithContent, let run = fenceRun,
+               isClosingFence(body, row, atLeast: run) {
+                piece = dropLeadingHorizontal(body[row.start..<row.end])
+            }
+            out += piece
+        }
+        return out
+    }
+
+    /// Each run of line endings inside an inline span, with any horizontal
+    /// whitespace after it, becomes one space. That is what makes an inline
+    /// span rewrap-safe, and it is the difference between the two
+    /// backtick-delimited kinds: an inline span carries no line structure.
+    static func foldInlineNewlines(_ body: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        var i = 0
+        while i < body.count {
+            if body[i].value != 0x0A {
+                out.append(body[i])
+                i += 1
+                continue
+            }
+            while i < body.count
+                && (body[i].value == 0x0A || isHorizontalWhiteSpace(body[i].value)) {
+                i += 1
+            }
+            out.append(" ")
+        }
+        return out
+    }
+
+    private static func asciiLower(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        scalars.map { $0.value >= 0x41 && $0.value <= 0x5A
+            ? Unicode.Scalar($0.value + 0x20)! : $0 }
+    }
+
+    /// Lowercase what RFC 2045 section 5.1 defines as case-insensitive and
+    /// nothing else: the type, the subtype and each parameter's attribute NAME.
+    /// A value is not case-insensitive in general, so it is reproduced exactly.
+    /// ";base64" is an attribute name with no value and folds with them.
+    private static func lowerDataHeader(_ header: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var out: [Unicode.Scalar] = []
+        var part: [Unicode.Scalar] = []
+        var isFirst = true
+        func emit() {
+            if let eq = part.firstIndex(where: { $0.value == 0x3D }), !isFirst {
+                out += asciiLower(Array(part[..<eq])) + Array(part[eq...])
+            } else {
+                out += asciiLower(part)
+            }
+            part.removeAll(keepingCapacity: true)
+        }
+        for scalar in header {
+            if scalar.value == 0x3B {
+                emit()
+                isFirst = false
+                out.append(";")
+                continue
+            }
+            part.append(scalar)
+        }
+        emit()
+        return out
+    }
+
+    /// Lowercase the scheme, and the host of a URI that has an authority; RFC
+    /// 3986 defines both as case-insensitive. A data: URI carries its own
+    /// case-insensitive fields, defined by RFC 2045. Nothing else folds.
+    static func normalizeURI(_ body: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        func indexOf(_ needle: [UInt32], from: Int) -> Int? {
+            guard body.count >= needle.count else { return nil }
+            var i = from
+            while i + needle.count <= body.count {
+                var hit = true
+                for (k, want) in needle.enumerated() where body[i + k].value != want {
+                    hit = false
+                    break
+                }
+                if hit { return i }
+                i += 1
+            }
+            return nil
+        }
+        if let slash = indexOf([0x3A, 0x2F, 0x2F], from: 0), slash > 0 {
+            let scheme = asciiLower(Array(body[..<slash]))
+            let rest = Array(body[(slash + 3)...])
+            var end = rest.count
+            for (k, scalar) in rest.enumerated()
+            where scalar.value == 0x2F || scalar.value == 0x3F || scalar.value == 0x23 {
+                end = k
+                break
+            }
+            var authority = Array(rest[..<end])
+            let tail = Array(rest[end...])
+            var userinfo: [Unicode.Scalar] = []
+            if let at = authority.lastIndex(where: { $0.value == 0x40 }) {
+                userinfo = Array(authority[...at])
+                authority = Array(authority[(at + 1)...])
+            }
+            return scheme + Array("://".unicodeScalars) + userinfo + asciiLower(authority) + tail
+        }
+        guard let colon = body.firstIndex(where: { $0.value == 0x3A }) else { return body }
+        let scheme = asciiLower(Array(body[..<colon]))
+        guard String(String.UnicodeScalarView(scheme)) == "data" else {
+            return scheme + Array(body[colon...])
+        }
+        guard let comma = body[(colon + 1)...].firstIndex(where: { $0.value == 0x2C }) else {
+            return scheme + Array(body[colon...])
+        }
+        return scheme + [":"] + lowerDataHeader(Array(body[(colon + 1)..<comma]))
+            + Array(body[comma...])
+    }
+
+    /// A protected span is not untouched bytes. It is text canonicalized under
+    /// a reduced rule set: line structure belongs to the channel, everything
+    /// else belongs to the author.
+    static func normalizeSpan(_ kind: SpanKind, _ body: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        switch kind {
+        case .fence: return normalizeFenceIndent(body)
+        case .inline: return foldInlineNewlines(body)
+        case .url: return normalizeURI(body)
+        }
+    }
+
+    // MARK: - Step 6.1: quotation
+
+    /// The marker first: a leading run of horizontal whitespace, a ">", and
+    /// every following character that is horizontal whitespace or another ">"
+    /// all become a single ">". A line that is nothing but the prefix is
+    /// dropped, as is a blank line.
+    ///
+    /// Then the structure. Consecutive lines of the same kind are joined, so
+    /// the number of markers stops tracking how a client wrapped the text; and
+    /// the line ending is kept wherever the kind changes, so a quoted question
+    /// cannot absorb the reply beneath it.
+    static func normalizeQuotation(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
+        var parts: [[Unicode.Scalar]] = []
+        var current: [[Unicode.Scalar]] = []
+        var kind: Bool? = nil
+
+        func flush(_ quoted: Bool) {
+            var joined: [Unicode.Scalar] = quoted ? [">"] : []
+            for (index, piece) in current.enumerated() {
+                if index > 0 { joined.append(" ") }
+                joined += piece
+            }
+            parts.append(joined)
+            current.removeAll(keepingCapacity: true)
+        }
+
+        for row in lines(scalars) {
+            var i = row.start
+            while i < row.contentEnd && isHorizontalWhiteSpace(scalars[i].value) { i += 1 }
+            let quoted = i < row.contentEnd && scalars[i].value == 0x3E
+            if quoted {
+                i += 1
+                while i < row.contentEnd
+                    && (scalars[i].value == 0x3E || isHorizontalWhiteSpace(scalars[i].value)) {
+                    i += 1
+                }
+            } else {
+                i = row.start
+            }
+            let body = Array(scalars[i..<row.contentEnd])
+            if body.allSatisfy({ isWhiteSpace($0.value) }) { continue }
+            if let previous = kind, previous != quoted { flush(previous) }
+            kind = quoted
+            current.append(body)
+        }
+        if let previous = kind { flush(previous) }
+
+        var out: [Unicode.Scalar] = []
+        for (index, part) in parts.enumerated() {
+            if index > 0 { out.append("\u{000A}") }
+            out += part
+        }
+        return out
+    }
+
+    // MARK: - Step 6.2: whitespace
 
     static func normalizeWhitespace(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
         var out: [Unicode.Scalar] = []
@@ -493,8 +822,16 @@ public enum Cqt {
         var i = 0
         while i < scalars.count {
             if isWhiteSpace(scalars[i].value) {
-                while i < scalars.count && isWhiteSpace(scalars[i].value) { i += 1 }
-                out.append(" ")
+                var sawNewline = false
+                while i < scalars.count && isWhiteSpace(scalars[i].value) {
+                    if scalars[i].value == 0x0A { sawNewline = true }
+                    i += 1
+                }
+                // A run collapses to one space, or to one line ending if it
+                // contains one. Step 6.1 has already joined every line within a
+                // passage, so the only line endings left are the boundaries it
+                // chose to keep, and those carry meaning a space would destroy.
+                out.append(sawNewline ? "\u{000A}" : " ")
             } else {
                 out.append(scalars[i])
                 i += 1
@@ -506,8 +843,8 @@ public enum Cqt {
     private static func trimSpaces(_ scalars: [Unicode.Scalar]) -> [Unicode.Scalar] {
         var lo = 0
         var hi = scalars.count
-        while lo < hi && scalars[lo].value == 0x20 { lo += 1 }
-        while hi > lo && scalars[hi - 1].value == 0x20 { hi -= 1 }
+        while lo < hi && (scalars[lo].value == 0x20 || scalars[lo].value == 0x0A) { lo += 1 }
+        while hi > lo && (scalars[hi - 1].value == 0x20 || scalars[hi - 1].value == 0x0A) { hi -= 1 }
         return Array(scalars[lo..<hi])
     }
 
@@ -573,7 +910,8 @@ public enum Cqt {
         i = 0
         while i < text.count {
             if i + 1 < text.count,
-               let canonical = emoticons[UInt64(text[i].value) << 32 | UInt64(text[i + 1].value)] {
+               let canonical = emoticons[UInt64(text[i].value) << 32 | UInt64(text[i + 1].value)],
+               !isGuardedEmoticonBlocked(text, i) {
                 nosed += canonical
                 i += 2
             } else {
@@ -724,6 +1062,20 @@ public enum Cqt {
         0x00AE: ["(", "R", ")"],
         0x2022: ["*"],
     ]
+
+    /// The three emoticons whose second character is a letter carry a trailing
+    /// guard: they convert only when what follows is not an ASCII letter,
+    /// digit, "-" or "_". Without it the table rewrites URI schemes --
+    /// "did:peer" became "did:-peer". Trailing only; a leading guard would also
+    /// stop converting "lol:p", which people type.
+    static func isGuardedEmoticonBlocked(_ text: [Unicode.Scalar], _ i: Int) -> Bool {
+        let second = text[i + 1].value
+        guard second == 0x44 || second == 0x70 || second == 0x6F else { return false }
+        guard i + 2 < text.count else { return false }
+        let v = text[i + 2].value
+        return (v >= 0x41 && v <= 0x5A) || (v >= 0x61 && v <= 0x7A)
+            || (v >= 0x30 && v <= 0x39) || v == 0x2D || v == 0x5F
+    }
 
     /// The ASCII emoticons of step 7.8, keyed by their two scalars.
     static let emoticons: [UInt64: [Unicode.Scalar]] = [

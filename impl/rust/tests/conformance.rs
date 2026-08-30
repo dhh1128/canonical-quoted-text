@@ -1,15 +1,15 @@
-//! Runs the normative vectors in `../../goldens/cqt2.17.json` against this port.
+//! Runs the normative vectors in `../../goldens/cqt3.17.json` against this port.
 //!
 //! The vectors are the conformance definition: an implementation is conformant
 //! exactly insofar as it produces, byte for byte, the output every vector
-//! specifies. There are no error cases -- cqt2.17 is a total function.
+//! specifies. There are no error cases -- cqt3.17 is a total function.
 
 use std::path::PathBuf;
 
 use serde_json::Value;
 
 fn goldens_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../goldens/cqt2.17.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../goldens/cqt3.17.json")
 }
 
 fn load() -> Value {
@@ -40,7 +40,7 @@ fn show(bytes: &[u8]) -> String {
 #[test]
 fn goldens_declare_the_expected_algorithm_and_unicode_version() {
     let doc = load();
-    assert_eq!(doc["algorithm"], "cqt2.17");
+    assert_eq!(doc["algorithm"], "cqt3.17");
     assert_eq!(doc["unicode_version"], "17.0.0");
     assert_eq!(doc["encoding"], "UTF-8");
     cqt::assert_unicode_version();
@@ -58,7 +58,7 @@ fn every_vector_matches_byte_for_byte() {
         let input = case["input"].as_str().expect("case has a string input");
         let expected = case["output"].as_str().expect("case has a string output");
 
-        let actual = cqt::algorithm_2_17(input);
+        let actual = cqt::algorithm_3_17(input);
         if actual != expected.as_bytes() {
             failures.push(format!(
                 "{id}\n     input: {}\n  expected: {}\n    actual: {}",
@@ -85,7 +85,7 @@ fn output_is_utf8_without_a_bom() {
     let doc = load();
     for case in doc["cases"].as_array().unwrap() {
         let input = case["input"].as_str().unwrap();
-        let actual = cqt::algorithm_2_17(input);
+        let actual = cqt::algorithm_3_17(input);
         assert!(
             std::str::from_utf8(&actual).is_ok(),
             "{} produced invalid UTF-8",

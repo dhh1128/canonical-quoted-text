@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Conformance harness for the JavaScript port of CQT 2.17.
+// Conformance harness for the JavaScript port of CQT 3.17.
 //
-// Reads the normative vectors in ../../goldens/cqt2.17.json and checks that
-// algorithm_2_17 produces byte-identical UTF-8 output for every one of them.
+// Reads the normative vectors in ../../goldens/cqt3.17.json and checks that
+// algorithm_3_17 produces byte-identical UTF-8 output for every one of them.
 // Exits 0 when every vector passes and 1 otherwise, so CI can gate on it.
 //
 //   node conformance.mjs            # summary only
@@ -16,9 +16,9 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-const { algorithm_2_17, UNICODE_VERSION } = require(join(here, 'cqt.js'));
+const { algorithm_3_17, UNICODE_VERSION } = require(join(here, 'cqt.js'));
 
-const goldenPath = join(here, '..', '..', 'goldens', 'cqt2.17.json');
+const goldenPath = join(here, '..', '..', 'goldens', 'cqt3.17.json');
 const golden = JSON.parse(readFileSync(goldenPath, 'utf8'));
 
 const verbose = process.argv.includes('--verbose');
@@ -53,8 +53,8 @@ const encoder = new TextEncoder();
 const failures = [];
 let passed = 0;
 
-if (golden.algorithm !== 'cqt2.17') {
-  console.error(`golden file declares algorithm ${golden.algorithm}, expected cqt2.17`);
+if (golden.algorithm !== 'cqt3.17') {
+  console.error(`golden file declares algorithm ${golden.algorithm}, expected cqt3.17`);
   process.exit(1);
 }
 if (golden.unicode_version !== UNICODE_VERSION) {
@@ -69,7 +69,7 @@ for (const testCase of golden.cases) {
   let actual;
   let threw = null;
   try {
-    actual = algorithm_2_17(testCase.input);
+    actual = algorithm_3_17(testCase.input);
   } catch (error) {
     threw = error;
   }

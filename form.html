@@ -26,7 +26,7 @@ title: Interactive CQT Tool
   }
   async function cqt() {
     intext = el('intext').value;
-    const canonical = algorithm_2_17(intext);
+    const canonical = algorithm_3_17(intext);
     const decoder = new TextDecoder('utf-8');
     outtext = decoder.decode(canonical);
     el('outtext').value = outtext;

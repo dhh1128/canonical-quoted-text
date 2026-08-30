@@ -1,0 +1,9 @@
+Ampersands & dashes -- and a "quoted" phrase with an em—dash.
+Here is an inline span: --dry-run  &  --verbose and here is a link: https://example.test/a--b?q=1&r=2
+
+this line starts with a quote marker
+This line is deliberately long so that a narrow window has to wrap it somewhere in the middle, which is the case that decides whether rewrapping matters.
+
+python
+def f(x):
+    return x  *  2

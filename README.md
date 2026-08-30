@@ -7,6 +7,10 @@ You can use an [interactive form to run the algorithm on arbitrary text](https:/
 ## Implementations
 Each implementation lives in its own directory under [impl/](impl), with a test harness beside it that runs the normative vectors in [goldens/cqt3.17.json](goldens/cqt3.17.json). A reference implementation is in [python](impl/python/cqt.py); see also [javascript](impl/js/cqt.js), [java](impl/java/Cqt.java), [go](impl/go/cqt.go), [rust](impl/rust/cqt.rs), and [swift](impl/swift/Cqt.swift). Whether any given implementation conforms is a question the vectors answer; see [Conformance](#conformance). Code is in the public domain; see [LICENSE](https://github.com/dhh1128/canonical-quoted-text/blob/main/LICENSE).
 
+## Building on CQT
+
+If you are writing an application that produces or checks CQT commitments rather than implementing the algorithm itself, see [Advice for apps using CQT](advice-for-apps-using-cqt.md). It is non-normative and revisable, and it covers what this document deliberately does not: which channels destroy protected content, where to take a digest, what a composer and a verifier each owe the user, and how to unnest a quoted reply.
+
 ## Purpose
 Cryptographic hashes and signatures are usually applied to files or data structures. However, a very important category of communication is not file-oriented. In our modern world, lots of text moves across system boundaries using mechanisms that are prone to reformatting and error due to their inherent fuzziness. We see a post on social media on our phones, copy it, and paste it into a text to a friend. She emails it to a journalist acquaintance, who moves it into a word processor that is configured to use a different locale with different autocorrect and punctuation settings. Eventually, a student cites the journalist in a paper they're writing. Somewhere along the way, whitespace is deleted, capitalization or spelling is altered, the codepage changes, smart quotes turn into dumb quotes or two hyphens become an em dash.
 

@@ -1,6 +1,6 @@
 # Advice for apps using CQT
 
-Non-normative. [CQT 3.17](README.md) and its [vectors](goldens/cqt3.17.json) are the specification; this is what we have learned about building on it, and it will age as channels change. Dated **2026-08-30**. Measurements cited here live in [research/](research/).
+Non-normative. [CQT 3.17](README.md) and its [vectors](goldens/cqt3.17.json) are the specification; this is what we have learned about building on it, and it will age as channels change. Dated **2026-09-03**. Measurements cited here live in [research/](research/).
 
 The algorithm answers one question: are these two pieces of text the same? Everything an application has to get right is on either side of that question &mdash; which bytes you hand it, and what you do with the answer. That is what this document is about.
 
@@ -54,9 +54,13 @@ The specification hands decoding to the caller on purpose, which means every cho
 
 ### Removing your own marker changes the claim
 
-Keeping a signature or marker on a line of its own makes it *removable*, which is necessary and not sufficient. Deleting a whole line still changes structure: it can join a quoted passage to an unquoted one, or consume the line ending a fence had claimed, so the text you verify is not the text minus a line.
+Keeping a signature or marker on a line of its own makes it *removable*, which is necessary and not sufficient. Removing the line from the **raw** text is exact, wherever the marker sits. Two things around that operation are not.
 
-**What to do.** Prefer out-of-band signatures. Where the marker must be in-band, specify the framing exactly, preserve the surrounding line structure when you extract it, and pin the extraction with vectors of your own &mdash; including a case where the marker sits next to a fence and one where it sits at a quotation boundary.
+The first is where you do it. Subtracting the marker from the *canonical* form does not recover the signed form, because step 6.1 joins across the gap the line left. `one` / `SIG` / `two` canonicalizes to `one SIG two`, and the body alone gives `one two`; a quoted example behaves the same way, `> q` / `SIG` / `> more` reaching `>q`, `SIG`, `>more` on separate lines where the body reaches the single joined line `>q more`. There is no canonical line to delete. Extract before you canonicalize, never after.
+
+The second is how you find it. An extractor that recognizes the marker by its shape will also find a marker-shaped line inside a fenced block or inside quoted material, where it is somebody else's text and removing it corrupts the claim.
+
+**What to do.** Prefer out-of-band signatures. Where the marker must be in-band, specify the framing exactly, extract it from the received bytes before CQT runs rather than from the canonical form, anchor it positionally rather than by pattern alone, and pin the extraction with vectors of your own &mdash; including a marker inside a fence, a marker inside a quoted passage, and one sitting between two lines that would otherwise join.
 
 ### One stray backtick corrupts spans it never touched
 
@@ -64,7 +68,7 @@ Inline spans pair by parity. Insert a single backtick upstream and every pairing
 
 The trigger set is narrower than it first appears, which is worth knowing before you build defenses against it. The cascade fires only when a backtick is *inserted or deleted*. Moving text as source does neither. Quoting does neither, because step 6.1 rewrites markers and line structure and never touches a span delimiter. What is left is truncation, and any preprocessing of your own that can cut mid-span.
 
-**What to do.** Count backticks before signing &mdash; an odd number of single-backtick runs almost always means a typo, and the consequence is not local. Then handle the two real triggers directly: verify whole messages rather than truncated views, and make your own preprocessing span-aware.
+**What to do.** Do not detect this by counting backticks. Parity is neither necessary nor sufficient: an even count per run length can still strand a delimiter, because pairing is greedy and a longer pair can swallow shorter runs whole; and an odd count can be entirely enclosed by an outer pair. Run the recognizer instead, and surface two things &mdash; any backtick run it left as prose, and the extent of every span it found. Then handle the two real triggers directly: verify whole messages rather than truncated views, and make your own preprocessing span-aware.
 
 ### Truncation
 
@@ -108,9 +112,12 @@ Base64url uses `-`, so a doubled hyphen appears in just over 1% of 44-character 
 
 A composer is any surface where a person writes text that will be signed &mdash; an editor, a chat box, a browser extension over someone else's page.
 
+These warnings are not all the same kind, and building them as though they were is how the good ones get under-built. Span recognition and a leading `>` are **exact**: both are computed from a fully specified grammar the composer is already running. Only the high-entropy warning is irreducibly heuristic, which is why the specification keeps it outside the algorithm.
+
 - **Warn when a high-entropy value appears without backticks.** The specification asks for this explicitly. A heuristic is unusable inside the algorithm, where a false positive silently changes signed bytes; in an editor a false positive is a prompt the author dismisses. Use the [entviz gallery](https://dhh1128.github.io/entviz/gallery.html) as a corpus.
 - **Warn on an inline span containing a line break.** It will fold to a space, which is usually what the author wants and occasionally is not.
-- **Warn on an odd backtick count.**
+- **Show what the recognizer protected.** A composer is already running CQT to show the canonical form, so span recognition costs nothing extra and its answer is exact rather than heuristic. Report any backtick run left as prose, and show the extent of each recognized span in place &mdash; the second is the only signal that catches a message where every run pairs but pairs differently than the author meant. Make it dismissible: deliberate prose backticks are ordinary, and the specification's own worked example ends with "I keep typing ``` and getting nothing."
+- **Warn on a line of the author's own text that begins with `>`.** Step 6.1 reads it as quoted, so the canonical form cannot tell it from a quotation of someone else and the signature covers a form that can be rendered as the author attributing words to another speaker. There is no escape character. The fixes are to rewrite the line or to wrap it in an inline code span &mdash; the latter works, but also folds the line into its neighbour, so say so rather than presenting it as a clean escape.
 - **Show the canonical form before signing,** or at least on request. It is the only way a person can see that their `--` became `-`.
 - **Keep any signature or marker of your own alone on its line.**
 - **Digest the editor's buffer, not the rendered DOM.**
@@ -118,7 +125,7 @@ A composer is any surface where a person writes text that will be signed &mdash;
 ## Duties of a verifier
 
 - **Fix the claim before you verify it, never by verifying it.** This is the one that will bite hardest, because the natural way to build a tolerant verifier is a security hole. If you try interpretations until one validates, you have not checked a claim; you have searched for a reading that succeeds. An attacker with one authentic signed sentence can then wrap it in a hostile paragraph and collect a verified badge for the whole thing &mdash; signature laundering, and the human sees only the badge. Decide what text the signature is asserted to cover *first*, from structure, and check that. Then show the reader the **exact extent** that was covered, so a badge can never appear to cover bytes it does not.
-- **Generate candidates, but bound them and name them.** Within a fixed claim, the received bytes may still be quoted, rewrapped, or a rendered copy, and trying those transformations is legitimate. Make the candidate list protocol-defined and short, canonicalize each, and report **which one matched** &mdash; "verified after removing email quote markers" is a different fact from "verified as received," and collapsing them throws away what the reader needs. Quote-stripping and marker reconstruction belong here, outside the frozen function, where a mistake costs a patch rather than a new algorithm number.
+- **Generate candidates, but bound them and name them.** A candidate may vary the *transformation* &mdash; quote-stripping, rewrapping, marker reconstruction &mdash; and never the *extent* of the claim. That is the whole of what separates this from the search forbidden above, and it is easy to collapse honestly, because changing quote-peel depth varies both at once. Within a fixed claim, then, the received bytes may still be quoted, rewrapped, or a rendered copy, and trying those transformations is legitimate. Make the candidate list protocol-defined and short, canonicalize each, and report **which one matched** &mdash; "verified after removing email quote markers" is a different fact from "verified as received," and collapsing them throws away what the reader needs. Quote-stripping and marker reconstruction belong here, outside the frozen function, where a mistake costs a patch rather than a new algorithm number.
 - **Report failure as a disjunction, and default to unverified.** A mismatch is not proof of duplicity. It is proof of *duplicity, or lossy quoting, or a copy taken from rendered output, or an encoding error, or an algorithm-version mismatch, or a bug in your verifier*. Naming the causes is what lets a person act; it is not permission to treat the failure as benign. The status is **unverified**, and it stays unverified until something matches. A UI that says "probably just a copy/paste problem" has taught its users to click through a security control.
 - **Distinguish "the marks are absent" from "the text was altered."** This is the one failure a composer cannot prevent: it happens on the recipient's side, in their client, silently. Text whose canonical form differs only by the loss of protection &mdash; markers gone, interiors normalized &mdash; has the shape of rendered output, and you can often say so. Compare the received text against the canonical form of the signed text with protection removed; if *that* matches, you have identified the cause and can tell the reader to fetch the source rather than leaving them with a bare failure.
 - **A signer makes the narrowest claim that will survive; a verifier never narrows one.** Quoters excerpt, so a signature over more text than survives the hop cannot be checked, and the party choosing what to cover should choose conservatively. That is advice to the *signer*. The mirror image is an attack: a verifier that shrinks the claim until something matches is laundering signatures. If the asserted extent does not verify, the answer is unverified &mdash; not a smaller claim that does.

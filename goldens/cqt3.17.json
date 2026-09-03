@@ -114,6 +114,16 @@
       "output": "a ```` ```"
     },
     {
+      "id": "even-run-counts-still-strand-a-delimiter",
+      "input": "A --1 `--2 ``--3 `--4 ``--5",
+      "output": "A -1 `--2 ``--3 `-4 ``-5"
+    },
+    {
+      "id": "odd-run-count-strands-nothing",
+      "input": "B --1 ``--2 `--3 `--4 `--5 ``--6",
+      "output": "B -1 ``--2 `--3 `--4 `--5 ``-6"
+    },
+    {
       "id": "matched-inline-run-still-protects",
       "input": "use `a  b` here",
       "output": "use `a  b` here"
@@ -1047,6 +1057,16 @@
       "id": "ideographic-comma-then-leftward-attachment",
       "input": "A 、 B",
       "output": "A, B"
+    },
+    {
+      "id": "marker-line-between-lines-that-would-join",
+      "input": "one\nSIG\ntwo",
+      "output": "one SIG two"
+    },
+    {
+      "id": "marker-line-between-quoted-lines",
+      "input": "> q\nSIG\n> more",
+      "output": ">q\nSIG\n>more"
     }
   ]
 }

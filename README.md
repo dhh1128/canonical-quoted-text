@@ -49,7 +49,7 @@ One goal is deliberately absent: the algorithm is not required to be idempotent.
 
 Sometimes a quotation contains a fragment that must survive exactly: a command, a hash, a snippet of code. Such a fragment is not human-friendly text at all. It is machine-readable syntax, and the transformations that make prose comparable would destroy it.
 
-A *protected span* is a run of characters the algorithm recognizes as machine-readable syntax rather than prose. None of the transformations in steps 4 through 7 inspects or alters its contents. Its line structure is another matter, and the paragraph after next says what happens to it. There are three kinds: a fenced code block, an inline code span, and an HTTP(S) URL.
+A *protected span* is a run of characters the algorithm recognizes as machine-readable syntax rather than prose. None of the transformations in steps 4 through 7 inspects or alters what it says. Its line structure is another matter &mdash; an inline span's interior line endings fold to a space, so the bytes are not untouched either &mdash; and the paragraph after next says what happens to it. There are three kinds: a fenced code block, an inline code span, and an HTTP(S) URL.
 
 Recognition happens once, on the input, before any transformation. Either the input satisfies the pattern or it does not. A span that only *becomes* recognizable later, because normalization folded a fullwidth character into a backtick or removing an invisible closed a gap in `http://`, was not machine-readable syntax when it arrived, and is treated as the prose it was.
 
